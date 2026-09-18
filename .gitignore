@@ -1,0 +1,20 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+.venv/
+venv/
+.env
+
+# generated series live outside version control
+out/
+*.mp4
+*.wav
+*.srt
+!docs/**/*.mp4
+
+.DS_Store
+.idea/
+.vscode/

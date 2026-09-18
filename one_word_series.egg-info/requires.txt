@@ -1,5 +1,0 @@
-Pillow<13,>=10.2.0
-imageio-ffmpeg<0.7,>=0.5.1
-
-[continuity]
-continuity-agent @ git+https://github.com/wargolet4ever/Continuity-Agent.git
