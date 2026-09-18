@@ -1,0 +1,373 @@
+"""Video vendors.  One run owns exactly one vendor — never a mix.
+
+`SeedanceVendor`  — Volcengine Ark (即梦 / Seedance).  Real, paid, opt-in.
+`AnimaticVendor`  — local ffmpeg + PIL storyboard cards.  Real files, zero cost.
+
+Both satisfy the same `FilmVendor` contract, so the audit/repair loop cannot
+tell them apart and the free offline demo exercises the exact code path a paid
+run takes.  Adding a model means writing one class with one `generate()`.
+
+Retry policy is deliberately asymmetric:
+
+    submit   0 automatic retries   — a timed-out POST may already have
+                                     created a billable task
+    poll     ≤2 automatic retries  — GET is free and idempotent
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import subprocess
+import textwrap
+import time
+import urllib.error
+import urllib.request
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from .contracts import BlockerFinding, GeneratedClip, OneWordError
+
+ARK_DEFAULT_BASE = "https://ark.cn-beijing.volces.com/api/v3"
+ARK_DEFAULT_MODEL = "doubao-seedance-1-0-lite-t2v-250428"
+POLL_INTERVAL_S = 10
+POLL_TIMEOUT_S = 600
+POLL_RETRIES = 2
+RETRYABLE_STATUS = {408, 409, 425, 429, 500, 502, 503, 504}
+
+# Whitelist, not a formula.  An unpriced combination is refused rather than
+# guessed at — the repo's existing rule for anything that spends money.
+PRICE_CNY = {
+    ("doubao-seedance-1-0-lite-t2v-250428", "720p", 5): 0.75,
+    ("doubao-seedance-1-0-lite-t2v-250428", "720p", 10): 1.50,
+    ("doubao-seedance-1-0-pro-250528", "720p", 5): 2.10,
+    ("doubao-seedance-1-0-pro-250528", "1080p", 5): 4.20,
+}
+
+
+class VendorError(OneWordError):
+    pass
+
+
+class BudgetExceeded(VendorError):
+    pass
+
+
+def ffmpeg_exe() -> str:
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    try:
+        import imageio_ffmpeg
+
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception as exc:  # noqa: BLE001
+        raise VendorError("ffmpeg unavailable; run `python diagnose.py`") from exc
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Offline animatic vendor
+# ──────────────────────────────────────────────────────────────────────
+
+_FONT_CANDIDATES = (
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    "/usr/share/fonts/opentype/noto/NotoSansCJK-Medium.ttc",
+    "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+    "C:/Windows/Fonts/msyh.ttc",
+    "C:/Windows/Fonts/simhei.ttf",
+    "/System/Library/Fonts/PingFang.ttc",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+)
+
+
+def _font(size: int):
+    from PIL import ImageFont
+
+    for path in _FONT_CANDIDATES:
+        if Path(path).is_file():
+            try:
+                return ImageFont.truetype(path, size)
+            except Exception:  # noqa: BLE001 — try the next candidate
+                continue
+    return ImageFont.load_default()
+
+
+class AnimaticVendor:
+    """Renders a real, watchable storyboard card per shot.  No API, no cost.
+
+    It is honest about what it is: the report records the provider name, and
+    nothing downstream claims a generative model produced these pixels.  Its
+    only job is to prove the loop — plan, generate, audit, repair, assemble —
+    end to end before a single yuan is spent.
+    """
+
+    name = "local-animatic"
+    generative = False
+
+    def __init__(self, *, width: int = 1280, height: int = 720, fps: int = 24) -> None:
+        self.ffmpeg = ffmpeg_exe()
+        self.width = width
+        self.height = height
+        self.fps = fps
+
+    def _card(self, shot: dict[str, Any], attempt: int, target: Path) -> Path:
+        from PIL import Image, ImageDraw
+
+        bg = (18, 22, 28)
+        image = Image.new("RGB", (self.width, self.height), bg)
+        draw = ImageDraw.Draw(image)
+
+        accent = (196, 122, 74) if shot.get("identity_critical") else (74, 122, 150)
+        draw.rectangle([0, 0, 10, self.height], fill=accent)
+
+        head = _font(30)
+        body = _font(40)
+        small = _font(24)
+
+        draw.text((60, 54), f"SHOT {shot['shot_id']} · {shot.get('beat', '').upper()}", font=head, fill=(150, 163, 176))
+        draw.text((60, 96), shot.get("camera", ""), font=small, fill=(110, 122, 136))
+
+        y = 190
+        for line in textwrap.wrap(shot.get("action", ""), width=34)[:5]:
+            draw.text((60, y), line, font=body, fill=(232, 236, 240))
+            y += 56
+
+        line_text = (shot.get("line") or "").strip()
+        if line_text:
+            y = self.height - 190
+            draw.text((60, y - 40), "—", font=small, fill=(110, 122, 136))
+            for line in textwrap.wrap(f"「{line_text}」", width=40)[:3]:
+                draw.text((60, y), line, font=small, fill=accent)
+                y += 34
+
+        footer = f"{shot.get('location_name', '')}  ·  take {attempt}"
+        draw.text((60, self.height - 60), footer, font=small, fill=(92, 103, 115))
+
+        png = target.with_suffix(".png")
+        image.save(png)
+        return png
+
+    def generate(
+        self,
+        shot: dict[str, Any],
+        prompt: str,
+        attempt: int,
+        target: Path,
+    ) -> GeneratedClip:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        png = self._card(shot, attempt, target)
+        duration = float(shot.get("duration_sec") or 5)
+        # A slow push keeps the cut feeling like a shot rather than a slideshow.
+        zoom = "zoompan=z='min(zoom+0.0008,1.10)':d={frames}:s={w}x{h}:fps={fps}".format(
+            frames=int(duration * self.fps), w=self.width, h=self.height, fps=self.fps
+        )
+        command = [
+            self.ffmpeg, "-hide_banner", "-loglevel", "error",
+            "-loop", "1", "-i", str(png),
+            "-vf", f"{zoom},fade=t=in:st=0:d=0.4,fade=t=out:st={max(duration - 0.4, 0):.2f}:d=0.4,format=yuv420p",
+            "-t", f"{duration:.2f}", "-r", str(self.fps),
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+            "-y", str(target),
+        ]
+        completed = subprocess.run(command, capture_output=True, text=True, check=False)
+        png.unlink(missing_ok=True)
+        if completed.returncode != 0 or not target.is_file():
+            detail = (completed.stderr or completed.stdout or "ffmpeg failed").strip()
+            raise VendorError(f"animatic render failed: {detail[:240]}")
+        return GeneratedClip(
+            shot_id=str(shot["shot_id"]),
+            attempt=attempt,
+            provider=self.name,
+            path=target,
+            prompt=prompt,
+        )
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Seedance (Volcengine Ark)
+# ──────────────────────────────────────────────────────────────────────
+
+
+@dataclass
+class ArkConfig:
+    api_key: str
+    base_url: str = ARK_DEFAULT_BASE
+    model: str = ARK_DEFAULT_MODEL
+    resolution: str = "720p"
+    ratio: str = "16:9"
+    duration: int = 5
+    watermark: bool = False
+    generate_audio: bool = False
+    budget_cny: float = 30.0
+
+    @classmethod
+    def from_env(cls) -> "ArkConfig":
+        key = os.getenv("ARK_API_KEY") or os.getenv("SEEDANCE_API_KEY") or ""
+        if not key:
+            raise VendorError("ARK_API_KEY is not set; refusing to build a paid vendor")
+        if os.getenv("ENABLE_VIDEO_GENERATION") != "1":
+            raise VendorError("ENABLE_VIDEO_GENERATION=1 is required before any paid generation")
+        return cls(
+            api_key=key,
+            base_url=os.getenv("ARK_BASE_URL", ARK_DEFAULT_BASE).rstrip("/"),
+            model=os.getenv("SEEDANCE_MODEL", ARK_DEFAULT_MODEL),
+            resolution=os.getenv("SEEDANCE_RESOLUTION", "720p"),
+            ratio=os.getenv("SEEDANCE_RATIO", "16:9"),
+            duration=int(os.getenv("SEEDANCE_DURATION", "5")),
+            watermark=os.getenv("SEEDANCE_WATERMARK", "0") == "1",
+            generate_audio=os.getenv("SEEDANCE_AUDIO", "0") == "1",
+            budget_cny=float(os.getenv("VIDEO_BUDGET_CNY", "30")),
+        )
+
+
+def estimated_cost_cny(config: ArkConfig) -> float:
+    key = (config.model, config.resolution, int(config.duration))
+    if key not in PRICE_CNY:
+        raise VendorError(
+            f"no verified price for {key}; add it to PRICE_CNY rather than guessing"
+        )
+    return PRICE_CNY[key]
+
+
+class SeedanceVendor:
+    """Submit → poll → download, against the Ark native video API."""
+
+    name = "seedance-ark"
+    generative = True
+
+    def __init__(self, config: ArkConfig | None = None, *, opener=None) -> None:
+        self.config = config or ArkConfig.from_env()
+        self.unit_cost = estimated_cost_cny(self.config)
+        self.spent_cny = 0.0
+        self.ffmpeg = ffmpeg_exe()
+        self._opener = opener or urllib.request.urlopen
+        self.events: list[dict[str, Any]] = []
+
+    # ---- HTTP ------------------------------------------------------
+
+    def _request(self, method: str, path: str, payload: dict | None = None) -> dict[str, Any]:
+        request = urllib.request.Request(
+            f"{self.config.base_url}{path}",
+            data=json.dumps(payload, ensure_ascii=False).encode("utf-8") if payload else None,
+            headers={
+                "Authorization": f"Bearer {self.config.api_key}",
+                "Content-Type": "application/json",
+            },
+            method=method,
+        )
+        with self._opener(request, timeout=120) as response:
+            return json.loads(response.read().decode("utf-8"))
+
+    @staticmethod
+    def _retryable(exc: Exception) -> bool:
+        code = getattr(exc, "code", None)
+        if isinstance(code, int):
+            return code in RETRYABLE_STATUS
+        return isinstance(exc, (urllib.error.URLError, TimeoutError, ConnectionError))
+
+    # ---- the three stages ------------------------------------------
+
+    def submit(self, prompt: str) -> str:
+        if self.spent_cny + self.unit_cost > self.config.budget_cny:
+            raise BudgetExceeded(
+                f"budget cap ¥{self.config.budget_cny:.2f} reached "
+                f"(spent ¥{self.spent_cny:.2f}, next clip ¥{self.unit_cost:.2f})"
+            )
+        suffix = (
+            f" --resolution {self.config.resolution}"
+            f" --ratio {self.config.ratio}"
+            f" --duration {int(self.config.duration)}"
+            f" --watermark {'true' if self.config.watermark else 'false'}"
+        )
+        payload = {
+            "model": self.config.model,
+            "content": [{"type": "text", "text": prompt.strip() + suffix}],
+        }
+        if self.config.generate_audio:
+            payload["generate_audio"] = True
+        # No retry here, on purpose: a retried POST can create a second paid task.
+        body = self._request("POST", "/contents/generations/tasks", payload)
+        task_id = body.get("id") or body.get("task_id")
+        if not task_id:
+            raise VendorError(f"Ark accepted the request but returned no task id: {str(body)[:200]}")
+        self.spent_cny += self.unit_cost
+        return str(task_id)
+
+    def poll(self, task_id: str) -> dict[str, Any]:
+        deadline = time.time() + POLL_TIMEOUT_S
+        failures = 0
+        while time.time() < deadline:
+            try:
+                body = self._request("GET", f"/contents/generations/tasks/{task_id}")
+                failures = 0
+            except Exception as exc:  # noqa: BLE001
+                failures += 1
+                if not self._retryable(exc) or failures > POLL_RETRIES:
+                    raise VendorError(f"polling {task_id} failed: {type(exc).__name__}") from exc
+                time.sleep(POLL_INTERVAL_S)
+                continue
+
+            status = (body.get("status") or "").lower()
+            if status == "succeeded":
+                return body
+            if status in {"failed", "canceled"}:
+                error = body.get("error") or {}
+                raise VendorError(
+                    f"Ark task {task_id} {status}: {error.get('code', '')} {error.get('message', '')}".strip()
+                )
+            time.sleep(POLL_INTERVAL_S)
+        raise VendorError(f"Ark task {task_id} did not finish within {POLL_TIMEOUT_S}s")
+
+    def download(self, url: str, target: Path) -> Path:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        request = urllib.request.Request(url, method="GET")
+        with self._opener(request, timeout=300) as response, target.open("wb") as handle:
+            shutil.copyfileobj(response, handle)
+        if not target.is_file() or target.stat().st_size == 0:
+            raise VendorError(f"downloaded clip is empty: {target.name}")
+        return target
+
+    # ---- FilmVendor ------------------------------------------------
+
+    def generate(
+        self,
+        shot: dict[str, Any],
+        prompt: str,
+        attempt: int,
+        target: Path,
+    ) -> GeneratedClip:
+        started = time.time()
+        task_id = self.submit(prompt)
+        body = self.poll(task_id)
+        content = body.get("content") or {}
+        url = content.get("video_url") or content.get("url")
+        if not url:
+            raise VendorError(f"Ark task {task_id} succeeded with no video_url")
+        self.download(url, target)
+        self.events.append(
+            {
+                "shot_id": str(shot["shot_id"]),
+                "attempt": attempt,
+                "task_id": task_id,
+                "duration_ms": int((time.time() - started) * 1000),
+                "cost_cny": self.unit_cost,
+            }
+        )
+        return GeneratedClip(
+            shot_id=str(shot["shot_id"]),
+            attempt=attempt,
+            provider=self.name,
+            path=target,
+            prompt=prompt,
+        )
+
+
+def build_vendor(kind: str) -> Any:
+    kind = (kind or "animatic").lower()
+    if kind in {"animatic", "offline", "local"}:
+        return AnimaticVendor()
+    if kind in {"seedance", "ark", "jimeng"}:
+        return SeedanceVendor()
+    raise VendorError(f"unknown vendor '{kind}'; use animatic or seedance")

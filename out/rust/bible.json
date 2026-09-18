@@ -1,0 +1,199 @@
+{
+  "title": "《rust》",
+  "logline": "A two-hander about what rust does to the people who refuse to name it.",
+  "world": {
+    "premise": "A sealed residential block where rust has begun to appear on surfaces.",
+    "tone": "restrained, cold, documentary",
+    "era": "near future",
+    "palette": "desaturated teal and rust, single warm practical light"
+  },
+  "visual_grammar": {
+    "lens": "35mm anamorphic, shallow depth of field",
+    "lighting": "hard key from one practical source, deep shadow",
+    "negative": "text, watermark, extra fingers, warped architecture, style change"
+  },
+  "characters": {
+    "C1": {
+      "name": "Wen",
+      "role": "building caretaker",
+      "locked_appearance": "Late thirties, wiry build, black hair cropped short and greying at the temple, deep vertical scar through the left eyebrow, olive workwear jacket with a torn left cuff, always carrying a brass key ring on the belt.",
+      "voice": {
+        "gender": "male",
+        "age": "adult",
+        "quality": "low, unhurried"
+      }
+    },
+    "C2": {
+      "name": "Lin",
+      "role": "the tenant who stayed",
+      "locked_appearance": "Early twenties, slight build, long dark hair tied at the nape, round wire glasses, oversized grey knit sweater with a stretched right sleeve, a red enamel pin on the collar.",
+      "voice": {
+        "gender": "female",
+        "age": "young adult",
+        "quality": "quiet, precise"
+      }
+    }
+  },
+  "locations": {
+    "L1": {
+      "name": "Stairwell C",
+      "locked_description": "A concrete stairwell with painted green handrails, one flickering tube light, numbered landing plates, and a steel fire door at the bottom."
+    },
+    "L2": {
+      "name": "Unit 704",
+      "locked_description": "A one-room flat with a west-facing window, a folding table under it, a wall of taped paper notes, and an unplugged wall clock stopped at 4:10."
+    }
+  },
+  "continuity_rules": [
+    {
+      "id": "SER-01",
+      "text": "C1's left jacket cuff is torn in every shot.",
+      "severity": "regenerate"
+    },
+    {
+      "id": "SER-02",
+      "text": "C2 wears round wire glasses and the red collar pin in every shot.",
+      "severity": "regenerate"
+    },
+    {
+      "id": "SER-03",
+      "text": "The wall clock in Unit 704 always reads 4:10.",
+      "severity": "local_fix"
+    },
+    {
+      "id": "SER-04",
+      "text": "Stairwell handrails are green; they never change colour.",
+      "severity": "regenerate"
+    },
+    {
+      "id": "SER-05",
+      "text": "Only one warm practical light source is visible per shot.",
+      "severity": "local_fix"
+    }
+  ],
+  "episodes": [
+    {
+      "no": 1,
+      "title": "Episode 1",
+      "logline": "rust, one floor lower than yesterday.",
+      "beats": [
+        {
+          "action": "Wen stands still while the rust spreads across the far wall",
+          "location_id": "L1",
+          "character_ids": [
+            "C1"
+          ],
+          "camera": "wide establishing shot, locked off",
+          "line": "It started at the edges. Nobody looked at the edges."
+        },
+        {
+          "action": "Wen forces the door open and finds the rust already inside",
+          "location_id": "L2",
+          "character_ids": [
+            "C1"
+          ],
+          "camera": "medium shot, slow handheld drift",
+          "line": "You said this room was sealed."
+        },
+        {
+          "action": "Lin says the thing Wen has been refusing to hear",
+          "location_id": "L1",
+          "character_ids": [
+            "C1",
+            "C2"
+          ],
+          "camera": "medium close-up, slow push in",
+          "line": "I knew. I have known since the first night."
+        },
+        {
+          "action": "Wen destroys the one object that was keeping the rust out",
+          "location_id": "L2",
+          "character_ids": [
+            "C1"
+          ],
+          "camera": "close-up, static",
+          "line": "Then it was never the building. It was us."
+        },
+        {
+          "action": "Wen walks out and leaves the rust behind, changed",
+          "location_id": "L1",
+          "character_ids": [
+            "C1"
+          ],
+          "camera": "wide shot, slow pull back",
+          "line": "Leave it. Whatever it becomes now, it becomes without me."
+        }
+      ]
+    },
+    {
+      "no": 2,
+      "title": "Episode 2",
+      "logline": "rust, one floor lower than yesterday.",
+      "beats": [
+        {
+          "action": "Wen stands still while the rust spreads across the far wall",
+          "location_id": "L1",
+          "character_ids": [
+            "C1"
+          ],
+          "camera": "wide establishing shot, locked off",
+          "line": "It started at the edges. Nobody looked at the edges."
+        },
+        {
+          "action": "Wen forces the door open and finds the rust already inside",
+          "location_id": "L2",
+          "character_ids": [
+            "C1"
+          ],
+          "camera": "medium shot, slow handheld drift",
+          "line": "You said this room was sealed."
+        },
+        {
+          "action": "Lin says the thing Wen has been refusing to hear",
+          "location_id": "L1",
+          "character_ids": [
+            "C1",
+            "C2"
+          ],
+          "camera": "medium close-up, slow push in",
+          "line": "I knew. I have known since the first night."
+        },
+        {
+          "action": "Wen destroys the one object that was keeping the rust out",
+          "location_id": "L2",
+          "character_ids": [
+            "C1"
+          ],
+          "camera": "close-up, static",
+          "line": "Then it was never the building. It was us."
+        },
+        {
+          "action": "Wen walks out and leaves the rust behind, changed",
+          "location_id": "L1",
+          "character_ids": [
+            "C1"
+          ],
+          "camera": "wide shot, slow pull back",
+          "line": "Leave it. Whatever it becomes now, it becomes without me."
+        }
+      ]
+    }
+  ],
+  "_beats_order": [
+    "establish",
+    "escalate",
+    "turn",
+    "cost",
+    "resolve"
+  ],
+  "bible_version": "series-bible-1",
+  "seed_word": "rust",
+  "slug": "rust",
+  "created_at": "2026-09-18T07:35:25+00:00",
+  "shots_per_episode": 5,
+  "provenance": {
+    "source": "local-template",
+    "model": null,
+    "error": null
+  }
+}

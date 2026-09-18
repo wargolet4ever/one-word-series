@@ -1,0 +1,2 @@
+[console_scripts]
+oneword = oneword.cli:main
