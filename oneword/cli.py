@@ -48,6 +48,22 @@ def _parser() -> argparse.ArgumentParser:
         help="auto (best available, falls back to silent) | espeak | volc | silent",
     )
     parser.add_argument("--auditor", default="auto", help="auto | triage")
+    parser.add_argument(
+        "--audio", default="mix", choices=("mix", "keep", "replace"),
+        help=(
+            "what to do when a clip already has sound of its own: "
+            "mix (duck it under the narration, default) | "
+            "keep (the clip's audio wins, no narration) | "
+            "replace (narration only, discard the clip's track)"
+        ),
+    )
+    parser.add_argument(
+        "--dialogue", default="auto", choices=("auto", "on", "off"),
+        help=(
+            "let the video model perform each line itself: "
+            "auto (on when the vendor generates audio) | on | off"
+        ),
+    )
     parser.add_argument("--language", default="en", help="en | zh")
     parser.add_argument("--bible", default=None, help="reuse an existing bible.json")
     parser.add_argument("--no-model", action="store_true", help="skip the writing model entirely")
@@ -74,6 +90,41 @@ def _drift_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--no-model", action="store_true", help="pixel screen only, no model calls")
     return parser
+
+
+def _progress_printer(stream=None):
+    """One self-overwriting line per shot while a paid clip is generating.
+
+    A clip takes minutes and the run printed nothing the whole time, which
+    looks exactly like a hang — the first thing anyone does then is Ctrl-C a
+    task they have already paid for. The line rewrites itself so a five-minute
+    wait stays one line, and each finished shot leaves one line behind.
+    """
+
+    stream = stream or sys.stdout
+    interactive = hasattr(stream, "isatty") and stream.isatty()
+
+    def report(fields: dict) -> None:
+        shot = fields.get("shot_id", "?")
+        status = fields.get("status", "")
+        elapsed = fields.get("elapsed", 0.0)
+        line = f"  shot {shot} · {status} · {elapsed:.0f}s"
+        if fields.get("spent_cny") is not None:
+            line += f" · ¥{fields['spent_cny']:.2f} spent so far"
+        if fields.get("attempt_failures"):
+            line += f" · retry {fields['attempt_failures']}"
+
+        if fields.get("done") and status == "saved":
+            stream.write(("\r" + line.ljust(72) + "\n") if interactive else line + "\n")
+        elif interactive:
+            stream.write("\r" + line.ljust(72))
+        elif status in ("submitting", "downloading"):
+            # Not a terminal (a log file, CI): no rewriting, so only the
+            # transitions are worth a line.
+            stream.write(line + "\n")
+        stream.flush()
+
+    return report
 
 
 def _print_drift(report: dict) -> None:
@@ -144,9 +195,9 @@ def main(argv: list[str] | None = None) -> int:
         if not args.bible:
             bible_path = bible.save(root / "bible.json")
 
-        vendor = build_vendor(args.vendor)
+        vendor = build_vendor(args.vendor, on_progress=_progress_printer())
         voice_engine = build_voice(args.voice)
-        print(f"· vendor {vendor.name} · voice {voice_engine.name}")
+        print(f"· vendor {vendor.name} · voice {voice_engine.name} · audio {args.audio}")
         if voice_engine.name == "silent" and args.voice == "auto":
             print(
                 "  (no TTS engine on this machine — shipping picture and subtitles "
@@ -167,6 +218,8 @@ def main(argv: list[str] | None = None) -> int:
                 auditor=auditor,
                 voice_engine=voice_engine,
                 clip_seconds=args.seconds,
+                audio_mode=args.audio,
+                dialogue=args.dialogue,
             )
             paths = report.pop("_paths")
             status = report["summary"]["status"]

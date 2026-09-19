@@ -112,6 +112,42 @@ and falls back to silence rather than losing the film. Force one with
 `--voice espeak` (local, free, robotic), `--voice volc` (豆包语音,
 needs `VOLC_TTS_APPID` / `VOLC_TTS_TOKEN`), or `--voice silent`.
 
+### When the clip already has sound
+
+Video models return clips with dialogue and room tone in them. Narrating over
+that is usually a downgrade, so `--audio` decides what wins:
+
+| `--audio` | what happens |
+|---|---|
+| `mix` *(default)* | the clip's own audio is ducked ~9 dB under the narration; both survive |
+| `keep` | the clip's audio is the audio, narration is skipped entirely |
+| `replace` | narration only — the clip's own track is discarded |
+
+A shot whose clip already speaks gets no TTS call at all, so nothing dubs a
+second voice over the first. A silent clip behaves identically under all three.
+
+### Who says the line
+
+When the vendor can make sound, the line goes into the prompt and the video
+model performs it — lip-synced, in character, in the room's own acoustics. No
+external TTS competes with that, because TTS reads over a performance instead
+of being one.
+
+```bash
+oneword rust --vendor seedance --audio keep     # the model acts, nothing dubs over it
+oneword rust --dialogue off                     # no line in the prompt
+```
+
+`--dialogue auto` (the default) turns this on exactly when the vendor
+generates audio, and off for a vendor that returns silent clips, where a line
+in the prompt buys nothing.
+
+The failure mode of asking a video model for dialogue is that it writes the
+words across the frame instead of speaking them, so the dialogue block names
+the speaker, says the words are spoken aloud, and the negative prompt gains
+`subtitles, captions, burned-in text, …` on exactly those shots. Subtitles are
+still written to the `.srt` — heard in the picture, read from the sidecar.
+
 ## Cross-episode drift
 
 Everything above works inside one episode. This is the part that looks across
@@ -229,6 +265,6 @@ produces a film:
 python -m unittest discover -s tests -t .
 ```
 
-49 tests, none of which touch a paid API. The Ark adapter is driven through a
+72 tests, none of which touch a paid API. The Ark adapter is driven through a
 fake opener, so the request shape, the no-retry-on-submit rule and the budget
 cap are all asserted without spending anything.

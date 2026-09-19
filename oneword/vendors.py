@@ -55,6 +55,50 @@ class BudgetExceeded(VendorError):
     pass
 
 
+class ArkHTTPError(VendorError):
+    """An HTTP failure with the platform's own explanation attached.
+
+    Ark puts the useful part in the response body — "model not found", "no
+    access", "quota exhausted" — and a bare `HTTPError: 404` throws that away,
+    leaving you to guess. It keeps `.code` so the retry classifier still works
+    on it unchanged.
+    """
+
+    def __init__(self, code: int, message: str, url: str, model: str = "") -> None:
+        detail = f"Ark returned HTTP {code}"
+        if model:
+            detail += f" for model {model!r}"
+        detail += f": {message}" if message else " with no explanation in the body"
+        if code == 404:
+            detail += (
+                "\n  A 404 here almost always means the model id is wrong or not "
+                "activated on this account, not that the URL is wrong.\n"
+                "  Check 方舟控制台 → 模型广场: is the model opened, and does "
+                "SEEDANCE_MODEL match its id exactly (including the date suffix)?"
+            )
+        super().__init__(detail)
+        self.code = code
+        self.url = url
+
+
+def _error_message(exc: urllib.error.HTTPError) -> str:
+    """Pull the platform's explanation out of an error response body."""
+
+    try:
+        raw = exc.read().decode("utf-8", errors="replace")
+    except Exception:  # noqa: BLE001 — the body is a bonus, never required
+        return ""
+    try:
+        body = json.loads(raw)
+    except ValueError:
+        return raw.strip()[:400]
+    error = body.get("error") if isinstance(body, dict) else None
+    if isinstance(error, dict):
+        parts = [str(error.get(key, "")).strip() for key in ("code", "message")]
+        return " · ".join(part for part in parts if part)[:400]
+    return raw.strip()[:400]
+
+
 def ffmpeg_exe() -> str:
     found = shutil.which("ffmpeg")
     if found:
@@ -105,6 +149,7 @@ class AnimaticVendor:
 
     name = "local-animatic"
     generative = False
+    speaks = False
 
     def __init__(self, *, width: int = 1280, height: int = 720, fps: int = 24) -> None:
         self.ffmpeg = ffmpeg_exe()
@@ -237,13 +282,30 @@ class SeedanceVendor:
     name = "seedance-ark"
     generative = True
 
-    def __init__(self, config: ArkConfig | None = None, *, opener=None) -> None:
+    def __init__(
+        self,
+        config: ArkConfig | None = None,
+        *,
+        opener=None,
+        on_progress=None,
+    ) -> None:
         self.config = config or ArkConfig.from_env()
         self.unit_cost = estimated_cost_cny(self.config)
         self.spent_cny = 0.0
         self.ffmpeg = ffmpeg_exe()
         self._opener = opener or urllib.request.urlopen
+        # Generating one clip takes minutes, and a run that prints nothing for
+        # minutes is indistinguishable from a hung one. The vendor reports what
+        # it is waiting on; the caller decides how to show it.
+        self._on_progress = on_progress
+        # Whether this vendor can perform dialogue itself, which decides
+        # whether the pipeline writes lines into the prompt at all.
+        self.speaks = bool(self.config.generate_audio)
         self.events: list[dict[str, Any]] = []
+
+    def _progress(self, **fields: Any) -> None:
+        if self._on_progress:
+            self._on_progress(fields)
 
     # ---- HTTP ------------------------------------------------------
 
@@ -257,8 +319,16 @@ class SeedanceVendor:
             },
             method=method,
         )
-        with self._opener(request, timeout=120) as response:
-            return json.loads(response.read().decode("utf-8"))
+        try:
+            with self._opener(request, timeout=120) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            raise ArkHTTPError(
+                exc.code,
+                _error_message(exc),
+                f"{self.config.base_url}{path}",
+                model=self.config.model,
+            ) from exc
 
     @staticmethod
     def _retryable(exc: Exception) -> bool:
@@ -295,8 +365,9 @@ class SeedanceVendor:
         self.spent_cny += self.unit_cost
         return str(task_id)
 
-    def poll(self, task_id: str) -> dict[str, Any]:
-        deadline = time.time() + POLL_TIMEOUT_S
+    def poll(self, task_id: str, *, shot_id: str = "") -> dict[str, Any]:
+        started = time.time()
+        deadline = started + POLL_TIMEOUT_S
         failures = 0
         while time.time() < deadline:
             try:
@@ -306,17 +377,29 @@ class SeedanceVendor:
                 failures += 1
                 if not self._retryable(exc) or failures > POLL_RETRIES:
                     raise VendorError(f"polling {task_id} failed: {type(exc).__name__}") from exc
+                self._progress(
+                    shot_id=shot_id, task_id=task_id, status="retrying",
+                    elapsed=time.time() - started, attempt_failures=failures,
+                )
                 time.sleep(POLL_INTERVAL_S)
                 continue
 
             status = (body.get("status") or "").lower()
             if status == "succeeded":
+                self._progress(
+                    shot_id=shot_id, task_id=task_id, status="succeeded",
+                    elapsed=time.time() - started, done=True,
+                )
                 return body
             if status in {"failed", "canceled"}:
                 error = body.get("error") or {}
                 raise VendorError(
                     f"Ark task {task_id} {status}: {error.get('code', '')} {error.get('message', '')}".strip()
                 )
+            self._progress(
+                shot_id=shot_id, task_id=task_id, status=status or "pending",
+                elapsed=time.time() - started,
+            )
             time.sleep(POLL_INTERVAL_S)
         raise VendorError(f"Ark task {task_id} did not finish within {POLL_TIMEOUT_S}s")
 
@@ -339,13 +422,24 @@ class SeedanceVendor:
         target: Path,
     ) -> GeneratedClip:
         started = time.time()
+        shot_id = str(shot["shot_id"])
+        self._progress(shot_id=shot_id, status="submitting", elapsed=0.0)
         task_id = self.submit(prompt)
-        body = self.poll(task_id)
+        body = self.poll(task_id, shot_id=shot_id)
         content = body.get("content") or {}
         url = content.get("video_url") or content.get("url")
         if not url:
             raise VendorError(f"Ark task {task_id} succeeded with no video_url")
+        self._progress(
+            shot_id=shot_id, task_id=task_id, status="downloading",
+            elapsed=time.time() - started,
+        )
         self.download(url, target)
+        self._progress(
+            shot_id=shot_id, task_id=task_id, status="saved", done=True,
+            elapsed=time.time() - started, cost_cny=self.unit_cost,
+            spent_cny=self.spent_cny,
+        )
         self.events.append(
             {
                 "shot_id": str(shot["shot_id"]),
@@ -364,10 +458,10 @@ class SeedanceVendor:
         )
 
 
-def build_vendor(kind: str) -> Any:
+def build_vendor(kind: str, *, on_progress=None) -> Any:
     kind = (kind or "animatic").lower()
     if kind in {"animatic", "offline", "local"}:
         return AnimaticVendor()
     if kind in {"seedance", "ark", "jimeng"}:
-        return SeedanceVendor()
+        return SeedanceVendor(on_progress=on_progress)
     raise VendorError(f"unknown vendor '{kind}'; use animatic or seedance")

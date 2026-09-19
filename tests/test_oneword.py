@@ -16,13 +16,14 @@ from unittest import mock
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from oneword import vendors, voice
+from oneword import cli, vendors, voice
 from oneword.contracts import BlockerFinding, GeneratedClip
 from oneword.bible import BIBLE_VERSION, SeriesBible, build_bible, slugify, validate
 from oneword.pipeline import (
     PipelineError,
     build_shots,
     compose_prompt,
+    dialogue_block,
     run_episode,
     validate_episode_report,
 )
@@ -278,8 +279,10 @@ class SeedanceTests(unittest.TestCase):
             raise urllib.error.HTTPError(request.full_url, 429, "busy", {}, None)
 
         vendor = vendors.SeedanceVendor(self.config(), opener=opener)
-        with self.assertRaises(urllib.error.HTTPError):
+        # Surfaced as ArkHTTPError now, still carrying the status code.
+        with self.assertRaises(vendors.ArkHTTPError) as caught:
             vendor.submit("x")
+        self.assertEqual(caught.exception.code, 429)
         self.assertEqual(calls["n"], 1)
 
     def test_budget_cap_refuses_the_next_clip(self):
@@ -369,3 +372,168 @@ class ContractTests(unittest.TestCase):
         from oneword.audit import continuity_agent_available
 
         self.assertIsInstance(continuity_agent_available(), bool)
+
+
+class ArkErrorMessageTests(unittest.TestCase):
+    """A 404 must arrive carrying the platform's own explanation."""
+
+    def config(self, **kwargs):
+        base = dict(api_key="test-key", model="doubao-seedance-1-0-lite-t2v-250428",
+                    resolution="720p", duration=5, budget_cny=10.0)
+        base.update(kwargs)
+        return vendors.ArkConfig(**base)
+
+    def opener_raising(self, code, body):
+        def opener(request, timeout=None):
+            raise urllib.error.HTTPError(
+                request.full_url, code, "error", {},
+                io.BytesIO(body.encode("utf-8")),
+            )
+        return opener
+
+    def test_the_platform_message_survives_into_the_error(self):
+        body = '{"error":{"code":"ModelNotFound","message":"model not opened"}}'
+        vendor = vendors.SeedanceVendor(self.config(), opener=self.opener_raising(404, body))
+        with self.assertRaises(vendors.ArkHTTPError) as caught:
+            vendor.submit("x")
+        text = str(caught.exception)
+        self.assertIn("ModelNotFound", text)
+        self.assertIn("model not opened", text)
+
+    def test_a_404_explains_the_likely_cause(self):
+        vendor = vendors.SeedanceVendor(self.config(), opener=self.opener_raising(404, "{}"))
+        with self.assertRaises(vendors.ArkHTTPError) as caught:
+            vendor.submit("x")
+        self.assertIn("not activated", str(caught.exception))
+
+    def test_the_status_code_survives_for_the_retry_classifier(self):
+        vendor = vendors.SeedanceVendor(self.config(), opener=self.opener_raising(429, "{}"))
+        try:
+            vendor.submit("x")
+        except vendors.ArkHTTPError as exc:
+            self.assertEqual(exc.code, 429)
+            self.assertTrue(vendors.SeedanceVendor._retryable(exc))
+
+    def test_the_api_key_never_appears_in_the_error(self):
+        vendor = vendors.SeedanceVendor(
+            self.config(api_key="super-secret"), opener=self.opener_raising(404, "{}")
+        )
+        with self.assertRaises(vendors.ArkHTTPError) as caught:
+            vendor.submit("x")
+        self.assertNotIn("super-secret", str(caught.exception))
+
+
+class ProgressTests(unittest.TestCase):
+    """A paid run must show it is alive while a clip generates."""
+
+    def vendor(self, statuses, events):
+        config = vendors.ArkConfig(
+            api_key="k", model="doubao-seedance-1-0-lite-t2v-250428",
+            resolution="720p", duration=5, budget_cny=10.0,
+        )
+        replies = iter(
+            [json.dumps({"id": "task-1"}).encode("utf-8")]
+            + [json.dumps(s).encode("utf-8") for s in statuses]
+        )
+
+        def opener(request, timeout=None):
+            return FakeResponse(next(replies))
+
+        return vendors.SeedanceVendor(
+            config, opener=opener, on_progress=events.append
+        )
+
+    def test_each_poll_reports_status_and_elapsed(self):
+        events = []
+        vendor = self.vendor(
+            [{"status": "running"}, {"status": "running"}, {"status": "succeeded"}], events
+        )
+        with mock.patch.object(vendors.time, "sleep"):
+            vendor.poll("task-1", shot_id="2")
+        self.assertTrue(events)
+        self.assertEqual([e["status"] for e in events][-1], "succeeded")
+        self.assertTrue(all(e["shot_id"] == "2" for e in events))
+        self.assertTrue(all("elapsed" in e for e in events))
+
+    def test_a_vendor_without_a_callback_still_works(self):
+        config = vendors.ArkConfig(
+            api_key="k", model="doubao-seedance-1-0-lite-t2v-250428",
+            resolution="720p", duration=5, budget_cny=10.0,
+        )
+        replies = iter([json.dumps({"status": "succeeded"}).encode("utf-8")])
+        vendor = vendors.SeedanceVendor(
+            config, opener=lambda request, timeout=None: FakeResponse(next(replies))
+        )
+        with mock.patch.object(vendors.time, "sleep"):
+            self.assertEqual(vendor.poll("task-1")["status"], "succeeded")
+
+    def test_the_printer_rewrites_one_line_and_keeps_the_finished_one(self):
+        import io as _io
+
+        class Tty(_io.StringIO):
+            def isatty(self):
+                return True
+
+        stream = Tty()
+        report = cli._progress_printer(stream)
+        report({"shot_id": "1", "status": "running", "elapsed": 10.0})
+        report({"shot_id": "1", "status": "running", "elapsed": 20.0})
+        report({"shot_id": "1", "status": "saved", "elapsed": 30.0, "done": True,
+                "spent_cny": 1.86})
+        text = stream.getvalue()
+        self.assertEqual(text.count("\n"), 1)          # only the finished line stays
+        self.assertEqual(text.count("\r"), 3)          # the rest rewrote in place
+        self.assertIn("¥1.86", text)
+
+
+class DialogueInPromptTests(unittest.TestCase):
+    """Letting the video model perform the line instead of dubbing over it."""
+
+    def setUp(self):
+        self.bible = make_bible(episodes=1, shots=4)
+        self.shot = build_shots(self.bible, 1)[0]
+
+    def test_a_silent_vendor_gets_no_dialogue(self):
+        prompt = compose_prompt(self.bible, self.shot, spoken=False)
+        self.assertNotIn("[DIALOGUE]", prompt)
+
+    def test_a_speaking_vendor_gets_the_line_and_the_speaker(self):
+        prompt = compose_prompt(self.bible, self.shot, spoken=True)
+        self.assertIn("[DIALOGUE]", prompt)
+        self.assertIn(self.shot["line"], prompt)
+        self.assertIn("Wen", prompt)
+        self.assertIn("lip-synced", prompt)
+
+    def test_dialogue_also_forbids_the_words_being_drawn(self):
+        """The failure mode of asking for dialogue is text across the frame."""
+
+        with_line = compose_prompt(self.bible, self.shot, spoken=True)
+        without = compose_prompt(self.bible, self.shot, spoken=False)
+        self.assertIn("burned-in text", with_line)
+        self.assertNotIn("burned-in text", without)
+
+    def test_a_shot_with_no_line_adds_nothing(self):
+        silent = dict(self.shot, line="   ")
+        self.assertNotIn("[DIALOGUE]", compose_prompt(self.bible, silent, spoken=True))
+
+    def test_the_language_follows_the_line(self):
+        chinese = dict(self.shot, line="你说这个房间是封死的。")
+        self.assertIn("Mandarin Chinese", compose_prompt(self.bible, chinese, spoken=True))
+        self.assertIn("English", compose_prompt(self.bible, self.shot, spoken=True))
+
+    def test_the_prompt_is_still_byte_stable(self):
+        first = compose_prompt(self.bible, self.shot, spoken=True)
+        second = compose_prompt(self.bible, self.shot, spoken=True)
+        self.assertEqual(first, second)
+
+    def test_the_locked_block_is_unchanged_by_dialogue(self):
+        """Adding dialogue must not disturb the continuity guarantee."""
+
+        head = lambda prompt: prompt.split("[ACTION]")[0]
+        self.assertEqual(
+            head(compose_prompt(self.bible, self.shot, spoken=True)),
+            head(compose_prompt(self.bible, self.shot, spoken=False)),
+        )
+
+    def test_the_offline_vendor_declares_it_cannot_speak(self):
+        self.assertFalse(vendors.AnimaticVendor().speaks)

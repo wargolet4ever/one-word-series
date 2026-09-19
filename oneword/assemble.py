@@ -58,6 +58,30 @@ class Segment:
     line: str
 
 
+def has_audio(clip: Path) -> bool:
+    """Does this clip carry an audio stream of its own?
+
+    Video models now return clips with dialogue and room tone already in them.
+    Overwriting that with an external narrator is almost always the wrong call,
+    so nothing downstream may assume a clip is silent — it has to ask.
+    """
+
+    probe = shutil.which("ffprobe")
+    if probe:
+        completed = subprocess.run(
+            [probe, "-v", "error", "-select_streams", "a",
+             "-show_entries", "stream=index", "-of", "csv=p=0", str(clip)],
+            capture_output=True, text=True, check=False,
+        )
+        return bool(completed.stdout.strip())
+    # No ffprobe: ffmpeg still names the streams it found on stderr.
+    completed = subprocess.run(
+        [_ffmpeg(), "-hide_banner", "-i", str(clip), "-f", "null", "-"],
+        capture_output=True, text=True, check=False,
+    )
+    return "Audio:" in completed.stderr
+
+
 def normalise(
     clip: Path,
     speech: Path | None,
@@ -65,8 +89,25 @@ def normalise(
     *,
     duration: float,
     music: Path | None = None,
+    mode: str = "mix",
+    duck_db: float = -9.0,
 ) -> Segment:
-    """One shot → one self-contained segment with a real audio track."""
+    """One shot → one self-contained segment with a real audio track.
+
+    `mode` decides what happens when the clip already has sound of its own:
+
+    `keep`     the clip's audio is the audio. Narration is dropped.
+    `mix`      both, with the clip ducked under the narration by `duck_db`.
+    `replace`  narration only — the clip's own track is discarded.
+
+    A clip with no audio behaves the same under every mode. The default is
+    `mix` rather than `replace` because discarding a performance the model
+    produced, in favour of a flat line read over the top of it, is a loss
+    disguised as a feature.
+    """
+
+    if mode not in ("keep", "mix", "replace"):
+        raise AssembleError(f"audio mode must be keep, mix or replace — got {mode!r}")
 
     ffmpeg = _ffmpeg()
     video_filter = (
@@ -74,28 +115,47 @@ def normalise(
         f"pad={WIDTH}:{HEIGHT}:(ow-iw)/2:(oh-ih)/2:color=black,"
         f"fps={FPS},format=yuv420p"
     )
-    command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-i", str(clip)]
+    fmt = f"aformat=sample_fmts=fltp:sample_rates={SAMPLE_RATE}:channel_layouts=stereo"
+    clip_has_audio = has_audio(clip)
+    use_speech = bool(speech and Path(speech).is_file()) and mode != "keep"
 
-    if speech and speech.is_file():
+    command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-i", str(clip)]
+    parts = [f"[0:v]{video_filter}[vout]"]
+
+    if clip_has_audio and mode != "replace":
+        parts.append(f"[0:a]{fmt},apad[orig]")
+    if use_speech:
         command += ["-i", str(speech)]
-        # Delay speech 0.35s so a line never starts on the cut, then pad the
-        # tail with silence so the audio stream is exactly as long as the shot.
-        audio_filter = (
-            "[1:a]aformat=sample_fmts=fltp:sample_rates=%d:channel_layouts=stereo,"
-            "adelay=350|350,apad[speech];"
-            "[speech]atrim=0:%.3f,asetpts=N/SR/TB[aout]" % (SAMPLE_RATE, duration)
-        )
-        command += [
-            "-filter_complex", f"[0:v]{video_filter}[vout];{audio_filter}",
-            "-map", "[vout]", "-map", "[aout]",
-        ]
+        # Delay the read 0.35s so a line never starts on the cut, then pad the
+        # tail so the stream is exactly as long as the shot.
+        parts.append(f"[1:a]{fmt},adelay=350|350,apad[speech]")
+
+    if use_speech and clip_has_audio and mode == "mix":
+        # Duck the clip under the narration rather than muting it: the room
+        # stays alive, the words stay legible.
+        gain = 10 ** (duck_db / 20)
+        parts.append(f"[orig]volume={gain:.3f}[ducked]")
+        parts.append("[ducked][speech]amix=inputs=2:duration=longest:dropout_transition=0[mixed]")
+        source = "[mixed]"
+    elif use_speech:
+        source = "[speech]"
+    elif clip_has_audio:
+        source = "[orig]"
     else:
         command += [
             "-f", "lavfi", "-t", f"{duration:.3f}",
             "-i", f"anullsrc=channel_layout=stereo:sample_rate={SAMPLE_RATE}",
-            "-filter_complex", f"[0:v]{video_filter}[vout]",
-            "-map", "[vout]", "-map", "1:a",
         ]
+        # Only reachable with no speech and no clip audio, so the silence is
+        # input 1 — a shot still needs a stream or the concat demuxer breaks.
+        parts.append(f"[1:a]{fmt},apad[orig]")
+        source = "[orig]"
+
+    parts.append(f"{source}atrim=0:{duration:.3f},asetpts=N/SR/TB[aout]")
+    command += [
+        "-filter_complex", ";".join(parts),
+        "-map", "[vout]", "-map", "[aout]",
+    ]
 
     command += [
         "-t", f"{duration:.3f}",
@@ -175,6 +235,7 @@ def build_episode(
     root: Path,
     *,
     stem: str = "episode",
+    mode: str = "mix",
 ) -> dict[str, Any]:
     """clips: [{shot_id, path, duration, line, speech}] in cut order."""
 
@@ -188,6 +249,7 @@ def build_episode(
             Path(item["speech"]) if item.get("speech") else None,
             target,
             duration=float(item["duration"]),
+            mode=mode,
         )
         segment.line = item.get("line", "")
         segment.shot_id = str(item["shot_id"])

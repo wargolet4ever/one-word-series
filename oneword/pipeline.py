@@ -73,18 +73,76 @@ def build_shots(bible: SeriesBible, episode_no: int, *, clip_seconds: int = 5) -
     return shots
 
 
-def compose_prompt(bible: SeriesBible, shot: dict[str, Any]) -> str:
-    """Locked facts first, then the action.  Byte-stable for the same shot."""
+# A model asked to include dialogue sometimes writes the words on screen
+# instead of speaking them. These are appended to whatever the bible already
+# forbids, only on shots that carry a spoken line.
+DIALOGUE_NEGATIVE = (
+    "subtitles, captions, burned-in text, text overlay, speech bubble, "
+    "karaoke text, on-screen writing of the dialogue"
+)
+
+
+def _is_cjk(text: str) -> bool:
+    return any("一" <= character <= "鿿" for character in text)
+
+
+def dialogue_block(bible: SeriesBible, shot: dict[str, Any]) -> str:
+    """Ask the model to perform the line rather than illustrate it.
+
+    A line performed by the video model is lip-synced, in character and in the
+    same acoustic space as the shot. No external TTS can match that, because it
+    is reading over a performance instead of being one.
+
+    The phrasing is deliberate: it names the speaker, says the words are spoken
+    aloud, and says what must not appear. "Include this dialogue" on its own is
+    the phrasing that gets you the sentence printed across the frame.
+    """
+
+    line = (shot.get("line") or "").strip()
+    if not line:
+        return ""
+    speaker_id = (shot.get("character_ids") or [None])[0]
+    try:
+        speaker = bible.character(speaker_id).get("name", "the character")
+    except (KeyError, TypeError):
+        speaker = "the character"
+    language = "Mandarin Chinese" if _is_cjk(line) else "English"
+    return (
+        f"[DIALOGUE] {speaker} speaks this line aloud, in {language}, "
+        f"lip-synced and audible, as the only speech in the shot:\n"
+        f"“{line}”\n"
+        "The words are heard, never shown. No text appears anywhere in frame."
+    )
+
+
+def compose_prompt(
+    bible: SeriesBible,
+    shot: dict[str, Any],
+    *,
+    spoken: bool = False,
+) -> str:
+    """Locked facts first, then the action.  Byte-stable for the same shot.
+
+    `spoken` is set when the vendor generates audio, and adds the line as
+    dialogue for the model to perform. It is off for a vendor that returns
+    silent clips, where a line in the prompt buys nothing and risks the model
+    drawing the words instead.
+    """
 
     parts = [
         bible.locked_block(shot["location_id"], shot["character_ids"]),
         f"[ACTION] {shot['action']}",
         f"[CAMERA] {shot['camera']}",
     ]
+    dialogue = dialogue_block(bible, shot) if spoken else ""
+    if dialogue:
+        parts.append(dialogue)
     rules = bible.rule_lines()
     if rules:
         parts.append("[CONTINUITY — MUST HOLD]\n" + "\n".join(f"MUST: {line}" for line in rules))
     negative = bible.negative_prompt()
+    if dialogue:
+        negative = f"{negative}, {DIALOGUE_NEGATIVE}" if negative else DIALOGUE_NEGATIVE
     if negative:
         parts.append(f"[NEGATIVE] {negative}")
     return "\n\n".join(part for part in parts if part.strip())
@@ -125,6 +183,8 @@ def run_episode(
     voice_engine=None,
     clip_seconds: int = 5,
     max_repair_rounds: int = MAX_REPAIR_ROUNDS,
+    audio_mode: str = "mix",
+    dialogue: str = "auto",
 ) -> dict[str, Any]:
     started = time.time()
     root = Path(output_dir)
@@ -141,8 +201,17 @@ def run_episode(
     if not getattr(vendor, "generative", False):
         auditor = RuleTriageAuditor()
 
+    # "auto" means: let the model perform the lines exactly when it can make
+    # sound at all. A silent vendor gets no dialogue in its prompts.
+    if dialogue == "auto":
+        spoken = bool(getattr(vendor, "speaks", False))
+    else:
+        spoken = dialogue == "on"
+
     shots = build_shots(bible, episode_no, clip_seconds=clip_seconds)
-    prompts = {shot["shot_id"]: compose_prompt(bible, shot) for shot in shots}
+    prompts = {
+        shot["shot_id"]: compose_prompt(bible, shot, spoken=spoken) for shot in shots
+    }
 
     generation_events: list[dict[str, Any]] = []
     audit_events: list[dict[str, Any]] = []
@@ -211,9 +280,15 @@ def run_episode(
     # ---- speech, subtitles, assembly --------------------------------
 
     clip_specs = []
+    narrated = 0
     for shot in shots:
         clip = current[shot["shot_id"]]
-        speech = _speech_for(shot, bible, voice_engine, work_dir)
+        # A clip that already speaks does not need a narrator reading the same
+        # line over the top of it. Asking first is cheaper than a TTS call and
+        # much better than the double-dialogue it avoids.
+        speaks_for_itself = audio_mode == "keep" or assemble.has_audio(clip.path)
+        speech = None if speaks_for_itself else _speech_for(shot, bible, voice_engine, work_dir)
+        narrated += 1 if speech else 0
         duration = float(shot["duration_sec"])
         if speech:
             # Never let a line get cut off: stretch the shot if the read is longer.
@@ -228,7 +303,9 @@ def run_episode(
             }
         )
 
-    built = assemble.build_episode(clip_specs, root, stem=f"episode-{int(episode_no):02d}")
+    built = assemble.build_episode(
+        clip_specs, root, stem=f"episode-{int(episode_no):02d}", mode=audio_mode
+    )
 
     repaired = sorted(
         {event["shot_id"] for event in generation_events if event["round"] > 0}, key=int
@@ -244,6 +321,9 @@ def run_episode(
         "vendor": vendor.name,
         "vendor_is_generative": bool(getattr(vendor, "generative", False)),
         "voice_engine": getattr(voice_engine, "name", "silent"),
+        "audio_mode": audio_mode,
+        "dialogue_performed_by_model": spoken,
+        "narrated_shots": narrated,
         "auditor": getattr(auditor, "name", "rule-triage"),
         "evidence_source": getattr(auditor, "last_evidence", RULE_TRIAGE),
         "bible_provenance": bible.data.get("provenance", {}),

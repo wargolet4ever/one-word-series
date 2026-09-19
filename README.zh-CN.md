@@ -107,6 +107,39 @@ export LLM_MODEL=<你的文本模型 id>
 要指定就用 `--voice espeak`（本地、免费、机器音）、`--voice volc`（豆包语音，
 需要 `VOLC_TTS_APPID` / `VOLC_TTS_TOKEN`）、或 `--voice silent`。
 
+### 当 clip 自己已经有声音
+
+视频模型现在会带着对白和环境声一起返回。在上面再压一层旁白通常是降级，
+所以 `--audio` 决定谁说了算：
+
+| `--audio` | 行为 |
+|---|---|
+| `mix`（默认） | clip 自带音轨压低约 9 dB 垫在旁白下面，两者都保留 |
+| `keep` | clip 自带的就是全部，完全不做旁白 |
+| `replace` | 只要旁白，丢掉 clip 自带音轨 |
+
+自带人声的镜头根本不会触发 TTS 调用，所以不会出现两个声音抢着说同一句。
+无声的 clip 在三种模式下表现完全一致。
+
+### 这句台词由谁来说
+
+vendor 能出声的时候，台词会进 prompt，由视频模型自己演 —— 有口型、在角色身上、
+在那个房间的声学环境里。外挂 TTS 没法比，因为 TTS 是在一段表演之上朗读，
+而不是表演本身。
+
+```bash
+oneword rust --vendor seedance --audio keep     # 模型自己演，没人往上配音
+oneword rust --dialogue off                     # 台词不进 prompt
+```
+
+`--dialogue auto`（默认）在 vendor 能生成音频时开启，对只出无声片的 vendor 关闭 ——
+那种情况下台词进 prompt 什么也换不来。
+
+让视频模型说台词的典型翻车是：它把那句话写在画面上而不是说出来。所以 dialogue 块
+会点名说话人、明确「说出声」，并且只在这些镜头上给负面提示追加
+`subtitles, captions, burned-in text, …`。字幕仍然写进 `.srt` ——
+画面里听见，字幕文件里读到。
+
 ## 跨集漂移
 
 上面所有东西都在一集之内工作。这一节是唯一跨集看的部分，也是「一句话生成」
@@ -205,5 +238,5 @@ AI 短片连戏检查器，抓单帧看不出来的错。完全可选，这里�
 python -m unittest discover -s tests -t .
 ```
 
-49 个测试，全部不碰付费 API。方舟适配器走 fake opener，
+72 个测试，全部不碰付费 API。方舟适配器走 fake opener，
 所以请求结构、提交不重试、预算上限这三件事都被断言了，且不花钱。
