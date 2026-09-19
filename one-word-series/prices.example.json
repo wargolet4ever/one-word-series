@@ -1,0 +1,14 @@
+{
+  "_readme": [
+    "Prices per finished clip, in yuan. Copy to prices.json and put your own",
+    "numbers in — look them up on the platform's pricing page, because a",
+    "guessed number makes the budget cap meaningless.",
+    "Shape: model -> resolution -> duration in seconds -> price.",
+    "ONEWORD_PRICES=/path/to/file overrides the location;",
+    "ONEWORD_PRICE=1.86 overrides everything for one run."
+  ],
+  "doubao-seedance-2-0-mini-260615": {
+    "480p": { "5": 0.00 },
+    "720p": { "5": 0.00 }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "name": "16mm-noir",
+  "label": "Black and white 16mm",
+  "_note": "16mm's stock and grain, noir's light and palette. Combining two presets by overriding field-by-field does not work — 16mm wants warm fading stock and noir wants no colour at all — so the fields are chosen one at a time.",
+
+  "render": "photographic, black and white 16mm film stock, visible grain, gate weave, halation around highlights",
+  "lens": "25mm spherical, deep focus, locked-off or slow dolly, occasional focus breathing",
+  "lighting": "single hard source, venetian-blind shadows, crushed blacks, blown practicals with halation",
+  "palette": "black and white only, milky blacks from the stock, no colour anywhere in frame",
+  "tone": "fatalistic, still, degraded",
+  "negative": "colour, pastel, soft even lighting, modern digital clarity, noise reduction, HDR, stabilised smoothness"
+}
