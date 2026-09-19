@@ -28,6 +28,8 @@ from .assemble import build_episode
 from .audit import FrameContinuityAuditor, RuleTriageAuditor, build_auditor
 from .bible import SeriesBible, build_bible
 from .contracts import BlockerFinding, ClipAuditor, FilmVendor, GeneratedClip, OneWordError
+from .drift import DriftError, audit_series
+from .registry import ReferenceRegistry
 from .pipeline import build_shots, compose_prompt, run_episode, validate_episode_report
 from .vendors import AnimaticVendor, SeedanceVendor, build_vendor
 from .voice import build_voice, write_srt
@@ -36,6 +38,8 @@ __all__ = [
     "__version__",
     "AnimaticVendor",
     "BlockerFinding",
+    "DriftError",
+    "ReferenceRegistry",
     "ClipAuditor",
     "FilmVendor",
     "FrameContinuityAuditor",
@@ -44,6 +48,7 @@ __all__ = [
     "RuleTriageAuditor",
     "SeedanceVendor",
     "SeriesBible",
+    "audit_series",
     "build_auditor",
     "build_bible",
     "build_episode",

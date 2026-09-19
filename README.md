@@ -112,6 +112,49 @@ and falls back to silence rather than losing the film. Force one with
 `--voice espeak` (local, free, robotic), `--voice volc` (豆包语音,
 needs `VOLC_TTS_APPID` / `VOLC_TTS_TOKEN`), or `--voice silent`.
 
+## Cross-episode drift
+
+Everything above works inside one episode. This is the part that looks across
+them, and the part a one-prompt pipeline cannot build: comparing episode 9 to
+episode 1 needs a written-down reference, and a pipeline that keeps its facts
+in a context window has nothing to point at.
+
+```bash
+oneword drift out/rust          # or it runs automatically after a multi-episode run
+```
+
+The first time a location or character appears and passes, that frame is
+adopted as its reference still and written to `references/`. Every later
+appearance, in every later episode and every later run, is compared **against
+that same still** — never against the previous episode.
+
+That distinction is the whole design. Comparing each episode to the last one is
+the arrangement that guarantees slow failure: episode 2 drifts three percent
+and passes, becomes the new reference, episode 3 drifts three percent from
+*that*, and by episode 9 nothing resembles episode 1 while every check passed
+along the way. So references are frozen once adopted. Re-basing exists, as
+`--reset-references`, and it is recorded in the registry with the episode that
+caused it.
+
+### What it can and cannot decide
+
+| subject | screened locally | why |
+|---|---|---|
+| location | yes | the frame is mostly the location, so a cheap fingerprint says something real |
+| character | **no** | a person is a fraction of a frame they share with a set that legitimately changes; a whole-frame fingerprint would be measuring the room |
+
+With no multimodal model configured, character drift is reported as
+`NOT CHECKED` — never as a pass — and the series summary is `PARTIAL` rather
+than `CONSISTENT`. A green tick nobody earned is worse than an honest blank.
+
+The local screen is triage, not a verdict. Its thresholds were measured, not
+chosen, and the measurement says the distributions overlap: about 80% of
+comparisons land in a review band the screen refuses to decide alone, and get
+handed to the multimodal comparison, which reads the written facts — the torn
+cuff, the green handrail — instead of counting pixels.
+[`docs/drift-calibration.md`](docs/drift-calibration.md) has the numbers and the
+command that reproduces them.
+
 ## Rules about spending money
 
 | | automatic retries | why |
@@ -158,10 +201,12 @@ a single frame. Entirely optional; nothing here requires it.
    Consecutive shots in one location should chain through image-to-video using
    the previous shot's last frame — `vendors.py` already leaves the slot for it.
 2. **Music and ambience.** There is only a dialogue track.
-3. **Cross-episode auditing.** Each episode is checked internally, but "is the
-   stairwell in episode 3 the same stairwell as episode 1" is not yet compared
-   automatically. This is the most valuable thing left to build.
-4. **Evidence of a real paid run.** The adapter is written and mock-tested; it
+3. **Character drift without a model.** Locations are screened locally;
+   characters need a multimodal key or they are honestly left unchecked.
+4. **Thresholds measured on real footage.** The drift bands are calibrated on a
+   synthetic harness. Rerun `scripts/calibrate_drift.py` against real Seedance
+   episodes once they exist and move the constants.
+5. **Evidence of a real paid run.** The adapter is written and mock-tested; it
    has not yet produced a paid clip.
 
 ## Windows notes
@@ -184,6 +229,6 @@ produces a film:
 python -m unittest discover -s tests -t .
 ```
 
-30 tests, none of which touch a paid API. The Ark adapter is driven through a
+49 tests, none of which touch a paid API. The Ark adapter is driven through a
 fake opener, so the request shape, the no-retry-on-submit rule and the budget
 cap are all asserted without spending anything.

@@ -2,13 +2,15 @@
 
     oneword rust --episodes 2                     # free, offline, runs now
     oneword rust --episodes 2 --vendor seedance   # real clips, costs money
+    oneword drift out/rust                        # cross-episode drift only
 
 `python -m oneword ...` does the same thing.
 
 Exit codes
-    0   every episode delivered
+    0   every episode delivered, no drift found
     20  an episode still had blockers after its repair rounds
     21  pipeline error
+    30  cross-episode drift found
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ from pathlib import Path
 
 from .audit import build_auditor
 from .bible import SeriesBible, build_bible
+from .drift import DriftError, audit_series
 from .pipeline import PipelineError, run_episode
 from .vendors import VendorError, build_vendor
 from .voice import VoiceError, build_voice
@@ -28,6 +31,7 @@ from .voice import VoiceError, build_voice
 EXIT_OK = 0
 EXIT_BLOCKERS = 20
 EXIT_ERROR = 21
+EXIT_DRIFT = 30
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -47,10 +51,71 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--language", default="en", help="en | zh")
     parser.add_argument("--bible", default=None, help="reuse an existing bible.json")
     parser.add_argument("--no-model", action="store_true", help="skip the writing model entirely")
+    parser.add_argument(
+        "--no-drift", action="store_true",
+        help="skip the cross-episode drift pass at the end of a multi-episode run",
+    )
+    parser.add_argument(
+        "--reset-references", action="store_true",
+        help="forget the locked reference stills and establish them again from this run",
+    )
     return parser
 
 
+def _drift_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="oneword drift",
+        description="compare every appearance against its locked reference still",
+    )
+    parser.add_argument("series_dir", help="a series directory (the one holding bible.json)")
+    parser.add_argument(
+        "--reset-references", action="store_true",
+        help="re-base every reference from the earliest episode present",
+    )
+    parser.add_argument("--no-model", action="store_true", help="pixel screen only, no model calls")
+    return parser
+
+
+def _print_drift(report: dict) -> None:
+    summary = report["summary"]
+    print(
+        f"· drift: {summary['status']} — {summary['checked']} appearances, "
+        f"{summary['drifted']} drifted, {summary['review']} to review, "
+        f"{summary['not_checked']} not checked"
+    )
+    if not report["model_looked"]:
+        print("  (no multimodal model looked; locations screened on pixels, characters unchecked)")
+    for finding in report["findings"]:
+        if finding["verdict"] in ("DRIFTED", "REVIEW"):
+            distance = finding["distance"]
+            detail = f" d={distance['composite']:.3f}" if distance else ""
+            print(
+                f"  {finding['verdict']:<10} ep{finding['episode']} shot {finding['shot_id']} "
+                f"· {finding['name']}{detail} (reference: ep{finding['reference_episode']})"
+            )
+
+
+def drift_main(argv: list[str]) -> int:
+    args = _drift_parser().parse_args(argv)
+    try:
+        report = audit_series(
+            args.series_dir,
+            reset_references=args.reset_references,
+            use_model=not args.no_model,
+        )
+    except DriftError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
+    _print_drift(report)
+    print(f"· report: {Path(args.series_dir) / 'series-drift-report.html'}")
+    return EXIT_DRIFT if report["summary"]["drifted"] else EXIT_OK
+
+
 def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "drift":
+        return drift_main(argv[1:])
+
     args = _parser().parse_args(argv)
     if not 3 <= args.shots <= 8:
         print("--shots must be between 3 and 8", file=sys.stderr)
@@ -137,6 +202,22 @@ def main(argv: list[str] | None = None) -> int:
             encoding="utf-8",
         )
         print(f"· series index: {root / 'series-index.json'}")
+
+        # The whole point of a series is that episode 9 still matches episode 1,
+        # so this runs by default rather than waiting to be asked.
+        if not args.no_drift and len(index) > 1:
+            try:
+                report = audit_series(
+                    root,
+                    reset_references=args.reset_references,
+                    use_model=not args.no_model,
+                )
+                _print_drift(report)
+                if report["summary"]["drifted"] and exit_code == EXIT_OK:
+                    exit_code = EXIT_DRIFT
+            except DriftError as exc:
+                print(f"· drift pass skipped: {exc}")
+
         return exit_code
 
     except (VendorError, VoiceError, PipelineError, ValueError) as exc:
