@@ -29,6 +29,11 @@ RULE_TRIAGE = "RULE TRIAGE ONLY"
 FRAME_AUDIT = "FRAME VISUAL AUDIT"
 FRAME_POSITIONS = (0.1, 0.5, 0.9)
 
+# A vision call carries two inlined frames and is answered by a slower model
+# than a text prompt. Overridable because "slow" is a property of the account
+# and the model, not of this code.
+VISION_TIMEOUT_S = int(os.getenv("ONEWORD_VISION_TIMEOUT", "420"))
+
 SYSTEM = (
     "You are a strict visual continuity auditor for a film series. "
     "You are given ordered frames from ONE shot and the written facts that must "
@@ -181,7 +186,10 @@ def _chat_vision(system: str, content: list[dict[str, Any]]) -> dict[str, Any]:
         ],
     }
     try:
-        body = llm.post_chat(payload)
+        # Two inlined frames is a far larger request than a text prompt, and a
+        # vision model is slower to answer one. The text default timed these
+        # out on real frames, and a timeout costs the appearance entirely.
+        body = llm.post_chat(payload, timeout=VISION_TIMEOUT_S)
     except Exception as exc:  # noqa: BLE001 — re-raised with the reason attached
         raise llm.ModelUnavailable(
             f"vision model {os.environ.get('LLM_MODEL', '?')} failed: "

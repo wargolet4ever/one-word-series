@@ -315,6 +315,28 @@ class CliSaysWhyNobodyLookedTests(unittest.TestCase):
         self.assertIn("not multimodal", text)
         self.assertNotIn("no multimodal model looked", text)
 
+    def test_some_calls_failing_is_not_reported_as_all_of_them(self):
+        """The contradiction that shipped: "nothing was examined" printed
+        directly above verdicts a model had reached.
+
+        Branching on "were there errors" instead of "did anything succeed"
+        turns a partial failure into a false claim — and a false claim about
+        what was examined is the one thing this tool may never make.
+        """
+
+        text = self.printed(
+            self.drift_report(
+                model_looked=True,
+                model_errors=["ModelUnavailable: TimeoutError: read operation timed out"],
+                summary=dict(self.drift_report()["summary"], not_checked=1),
+            ),
+            {"LLM_API_KEY": "k", "LLM_MODEL": "vision"},
+        )
+        self.assertIn("1 call(s) to the model failed", text)
+        self.assertIn("the rest answered", text)
+        self.assertNotIn("every call", text)
+        self.assertNotIn("Nothing below was examined", text)
+
     def test_a_missing_key_names_which_half_is_missing(self):
         text = self.printed(self.drift_report(), {"LLM_API_KEY": "k"})
         self.assertIn("LLM_MODEL not set", text)

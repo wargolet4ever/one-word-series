@@ -254,9 +254,22 @@ def _print_drift(report: dict) -> None:
     # "Nobody was asked" and "everybody was asked and nobody answered" are
     # different problems with different fixes, and printing one line for both
     # is how you set a key, see no change, and conclude the key is fine.
-    if report.get("model_errors"):
-        print(f"  a model WAS configured and every call to it failed ({len(report['model_errors'])} distinct):")
-        for reason in report["model_errors"][:3]:
+    errors = report.get("model_errors") or []
+    if errors and report["model_looked"]:
+        # Some calls answered and some did not. Saying "every call failed" here
+        # is a false claim sitting directly above verdicts a model did reach —
+        # the exact kind of contradiction this tool exists to refuse.
+        print(f"  {len(errors)} call(s) to the model failed; the rest answered:")
+        for reason in errors[:3]:
+            print(f"    {reason}")
+        print(
+            f"  The {summary['not_checked']} appearance(s) below marked NOT CHECKED are the "
+            "ones whose call failed.\n"
+            "  Everything else carries a verdict a model actually reached."
+        )
+    elif errors:
+        print(f"  a model WAS configured and every call to it failed ({len(errors)} distinct):")
+        for reason in errors[:3]:
             print(f"    {reason}")
         print(
             "  Nothing below was examined by a model. Check that LLM_MODEL names a "
