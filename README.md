@@ -148,6 +148,36 @@ the speaker, says the words are spoken aloud, and the negative prompt gains
 `subtitles, captions, burned-in text, …` on exactly those shots. Subtitles are
 still written to the `.srt` — heard in the picture, read from the sidecar.
 
+### Continuing a shot from the last one
+
+Two consecutive shots in one room, generated from text alone, are two
+independent guesses at that room — so the cut between them jumps. The bible
+stops the room becoming a *different* room; it cannot make one shot continue
+the other. Image-to-video can:
+
+```bash
+oneword rust --vendor seedance          # on by default where the vendor takes a first frame
+oneword rust --chain off                # every shot generated independently
+```
+
+The last frame of the previous shot becomes the first frame of the next, sent
+inline as base64 because the frame is on your machine and Ark cannot reach a
+local path.
+
+Chaining only happens where the shots really are continuous: **same location**,
+**adjacent in the cut**. Chaining across a cut to another room would paste the
+wrong room into the first frame, and the model would obediently keep it.
+
+There is one case the tool refuses to paper over. If a shot is repaired after
+the next shot was chained from it, that next shot now continues a take which is
+no longer in the episode. Regenerating the dependents would spend money nobody
+approved — only a blocker spends again — so the chain is reported stale and
+left for you:
+
+```
+  note: shot 3 continues shot 2, which was regenerated afterwards — that cut may jump
+```
+
 ## Cross-episode drift
 
 Everything above works inside one episode. This is the part that looks across
@@ -253,16 +283,13 @@ proven in production. Where that distinction matters it is stated in place.
 
 ## Not done yet
 
-1. **First-frame chaining.** Every shot is independent text-to-video today.
-   Consecutive shots in one location should chain through image-to-video using
-   the previous shot's last frame — `vendors.py` already leaves the slot for it.
-2. **Music and ambience.** There is only a dialogue track.
-3. **Character drift without a model.** Locations are screened locally;
+1. **Music and ambience.** There is only a dialogue track.
+2. **Character drift without a model.** Locations are screened locally;
    characters need a multimodal key or they are honestly left unchecked.
-4. **Thresholds measured on real footage.** The drift bands are calibrated on a
+3. **Thresholds measured on real footage.** The drift bands are calibrated on a
    synthetic harness. Rerun `scripts/calibrate_drift.py` against real Seedance
    episodes and move the constants — now possible, not yet done.
-5. **A demo film in the repo.** Paid clips exist; none is committed here yet.
+4. **A demo film in the repo.** Paid clips exist; none is committed here yet.
 
 ## Windows notes
 
@@ -284,6 +311,6 @@ produces a film:
 python -m unittest discover -s tests -t .
 ```
 
-72 tests, none of which touch a paid API. The Ark adapter is driven through a
+94 tests, none of which touch a paid API. The Ark adapter is driven through a
 fake opener, so the request shape, the no-retry-on-submit rule and the budget
 cap are all asserted without spending anything.

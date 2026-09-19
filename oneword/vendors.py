@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from . import chain
 from .contracts import BlockerFinding, GeneratedClip, OneWordError
 
 ARK_DEFAULT_BASE = "https://ark.cn-beijing.volces.com/api/v3"
@@ -150,6 +151,7 @@ class AnimaticVendor:
     name = "local-animatic"
     generative = False
     speaks = False
+    accepts_first_frame = False
 
     def __init__(self, *, width: int = 1280, height: int = 720, fps: int = 24) -> None:
         self.ffmpeg = ffmpeg_exe()
@@ -281,6 +283,10 @@ class SeedanceVendor:
 
     name = "seedance-ark"
     generative = True
+    # Image-to-video: the previous shot's last frame can be handed in as this
+    # shot's first frame, which is what makes a cut continuous rather than a
+    # second independent guess at the same room.
+    accepts_first_frame = True
 
     def __init__(
         self,
@@ -339,7 +345,7 @@ class SeedanceVendor:
 
     # ---- the three stages ------------------------------------------
 
-    def submit(self, prompt: str) -> str:
+    def submit(self, prompt: str, first_frame: Path | None = None) -> str:
         if self.spent_cny + self.unit_cost > self.config.budget_cny:
             raise BudgetExceeded(
                 f"budget cap ¥{self.config.budget_cny:.2f} reached "
@@ -351,10 +357,18 @@ class SeedanceVendor:
             f" --duration {int(self.config.duration)}"
             f" --watermark {'true' if self.config.watermark else 'false'}"
         )
-        payload = {
-            "model": self.config.model,
-            "content": [{"type": "text", "text": prompt.strip() + suffix}],
-        }
+        content: list[dict[str, Any]] = [{"type": "text", "text": prompt.strip() + suffix}]
+        if first_frame is not None:
+            # Sent inline rather than as a link: the frame lives on this
+            # machine and Ark cannot reach a local path.
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": chain.data_url(Path(first_frame))},
+                    "role": "first_frame",
+                }
+            )
+        payload = {"model": self.config.model, "content": content}
         if self.config.generate_audio:
             payload["generate_audio"] = True
         # No retry here, on purpose: a retried POST can create a second paid task.
@@ -423,8 +437,13 @@ class SeedanceVendor:
     ) -> GeneratedClip:
         started = time.time()
         shot_id = str(shot["shot_id"])
-        self._progress(shot_id=shot_id, status="submitting", elapsed=0.0)
-        task_id = self.submit(prompt)
+        first_frame = shot.get("first_frame")
+        self._progress(
+            shot_id=shot_id,
+            status="submitting" + (" (continuing)" if first_frame else ""),
+            elapsed=0.0,
+        )
+        task_id = self.submit(prompt, Path(first_frame) if first_frame else None)
         body = self.poll(task_id, shot_id=shot_id)
         content = body.get("content") or {}
         url = content.get("video_url") or content.get("url")

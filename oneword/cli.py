@@ -64,6 +64,13 @@ def _parser() -> argparse.ArgumentParser:
             "auto (on when the vendor generates audio) | on | off"
         ),
     )
+    parser.add_argument(
+        "--chain", default="auto", choices=("auto", "off"),
+        help=(
+            "continue consecutive shots in one location from the previous "
+            "shot's last frame: auto (on when the vendor accepts one) | off"
+        ),
+    )
     parser.add_argument("--language", default="en", help="en | zh")
     parser.add_argument("--bible", default=None, help="reuse an existing bible.json")
     parser.add_argument("--no-model", action="store_true", help="skip the writing model entirely")
@@ -220,8 +227,15 @@ def main(argv: list[str] | None = None) -> int:
                 clip_seconds=args.seconds,
                 audio_mode=args.audio,
                 dialogue=args.dialogue,
+                chaining=args.chain,
             )
             paths = report.pop("_paths")
+            for stale in report.get("stale_chains", []):
+                print(
+                    f"  note: shot {stale['shot_id']} continues shot "
+                    f"{stale['continues']}, which was regenerated afterwards — "
+                    "that cut may jump"
+                )
             status = report["summary"]["status"]
             if status != "DELIVERED":
                 exit_code = EXIT_BLOCKERS

@@ -30,7 +30,7 @@ from typing import Any
 
 from .contracts import BlockerFinding, GeneratedClip
 
-from . import assemble
+from . import assemble, chain
 from .audit import RULE_TRIAGE, RuleTriageAuditor
 from .bible import IDENTITY_CRITICAL_BEATS, BEATS, SeriesBible
 from .voice import SilentVoice, audio_duration, write_srt
@@ -185,6 +185,7 @@ def run_episode(
     max_repair_rounds: int = MAX_REPAIR_ROUNDS,
     audio_mode: str = "mix",
     dialogue: str = "auto",
+    chaining: str = "auto",
 ) -> dict[str, Any]:
     started = time.time()
     root = Path(output_dir)
@@ -220,6 +221,15 @@ def run_episode(
 
     pending = [shot["shot_id"] for shot in shots]
     by_id = {shot["shot_id"]: shot for shot in shots}
+
+    # Consecutive shots in one location are continued from the previous shot's
+    # last frame, so the cut between them is physical rather than two guesses
+    # at the same room. Off for a vendor that cannot take a first frame.
+    chain_links = (
+        chain.plan(shots)
+        if chaining == "auto" and getattr(vendor, "accepts_first_frame", False)
+        else {}
+    )
     # A shot whose last audit still said REGENERATE after the repair cap is a
     # shot the tool did not fix.  The report says so rather than rounding up.
     unresolved: set[str] = set()
@@ -229,6 +239,14 @@ def run_episode(
             break
         for shot_id in pending:
             shot = by_id[shot_id]
+            source_id = chain_links.get(shot_id)
+            shot.pop("first_frame", None)
+            if source_id and source_id in current:
+                frame = chain.last_frame(
+                    current[source_id].path, work_dir / f"chain-from-{source_id}.jpg"
+                )
+                if frame:
+                    shot["first_frame"] = str(frame)
             attempts[shot_id] += 1
             attempt = attempts[shot_id]
             prompt = prompts[shot_id]
@@ -243,6 +261,7 @@ def run_episode(
                     "provider": vendor.name,
                     "file": target.name,
                     "model_tier": shot["model_tier"],
+                    "continues_shot": source_id if shot.get("first_frame") else None,
                 }
             )
 
@@ -323,6 +342,8 @@ def run_episode(
         "voice_engine": getattr(voice_engine, "name", "silent"),
         "audio_mode": audio_mode,
         "dialogue_performed_by_model": spoken,
+        "chain_links": chain_links,
+        "stale_chains": chain.stale_links(chain_links, generation_events),
         "narrated_shots": narrated,
         "auditor": getattr(auditor, "name", "rule-triage"),
         "evidence_source": getattr(auditor, "last_evidence", RULE_TRIAGE),
