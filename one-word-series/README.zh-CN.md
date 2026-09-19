@@ -601,5 +601,5 @@ README 里的说法都是代码确实会做的事。这一节是更窄的一组�
 python -m unittest discover -s tests -t .
 ```
 
-248 个测试，全部不碰付费 API。方舟适配器走 fake opener，
+253 个测试，全部不碰付费 API。方舟适配器走 fake opener，
 所以请求结构、提交不重试、预算上限这三件事都被断言了，且不花钱。
