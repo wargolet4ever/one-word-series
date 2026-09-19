@@ -20,7 +20,9 @@ from tempfile import TemporaryDirectory
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from oneword import drift, metrics, vendors  # noqa: E402
+import os  # noqa: E402
+
+from oneword import cli, drift, metrics, vendors  # noqa: E402
 from oneword.bible import build_bible  # noqa: E402
 
 
@@ -266,6 +268,80 @@ class MissingFootageTests(unittest.TestCase):
             with self.assertRaises(drift.DriftError) as caught:
                 drift.audit_series(empty, use_model=False)
         self.assertIn("out-real", str(caught.exception))
+
+
+class CliSaysWhyNobodyLookedTests(unittest.TestCase):
+    """The CLI is what people read; the HTML is what they open afterwards.
+
+    The silent-failure fix went into the HTML report only, so the terminal kept
+    printing "no multimodal model looked" whether a key was missing or a
+    configured model had failed every call. Someone set a key, saw the same
+    output, and reasonably concluded the key was fine.
+    """
+
+    def drift_report(self, **overrides):
+        report = {
+            "model_looked": False,
+            "model_errors": [],
+            "missing_clips": [],
+            "findings": [],
+            "summary": {
+                "status": "PARTIAL", "checked": 18, "drifted": 0, "review": 0,
+                "not_checked": 10, "storyboard_episodes": [],
+            },
+        }
+        report.update(overrides)
+        return report
+
+    def printed(self, report, environment):
+        import contextlib
+        import io
+
+        out = io.StringIO()
+        with unittest.mock.patch.dict(os.environ, environment, clear=False):
+            for name in ("LLM_API_KEY", "LLM_MODEL"):
+                if name not in environment:
+                    os.environ.pop(name, None)
+            with contextlib.redirect_stdout(out):
+                cli._print_drift(report)
+        return out.getvalue()
+
+    def test_a_failing_model_is_not_reported_as_no_model(self):
+        text = self.printed(
+            self.drift_report(model_errors=["HTTPError: 400 model is not multimodal"]),
+            {"LLM_API_KEY": "k", "LLM_MODEL": "text-only"},
+        )
+        self.assertIn("WAS configured", text)
+        self.assertIn("not multimodal", text)
+        self.assertNotIn("no multimodal model looked", text)
+
+    def test_a_missing_key_names_which_half_is_missing(self):
+        text = self.printed(self.drift_report(), {"LLM_API_KEY": "k"})
+        self.assertIn("LLM_MODEL not set", text)
+        self.assertNotIn("LLM_API_KEY and LLM_MODEL not set", text)
+
+    def test_both_missing_says_so(self):
+        text = self.printed(self.drift_report(), {})
+        self.assertIn("LLM_API_KEY and LLM_MODEL not set", text)
+
+    def test_storyboard_footage_is_not_a_misconfiguration(self):
+        """Grading stand-in pixels with a vision model would buy a false verdict."""
+
+        text = self.printed(
+            self.drift_report(
+                summary=dict(self.drift_report()["summary"], storyboard_episodes=[1, 2])
+            ),
+            {"LLM_API_KEY": "k", "LLM_MODEL": "m"},
+        )
+        self.assertIn("on purpose", text)
+        self.assertNotIn("this is a bug", text)
+
+    def test_skipped_clips_are_named_in_the_terminal_too(self):
+        text = self.printed(
+            self.drift_report(missing_clips=["ep1 shot 2 (shot-02-take-01.mp4)"]), {}
+        )
+        self.assertIn("not on disk", text)
+        self.assertIn("shot-02-take-01.mp4", text)
 
 
 class ValidatorTests(unittest.TestCase):

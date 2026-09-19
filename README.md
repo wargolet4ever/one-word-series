@@ -637,6 +637,6 @@ produces a film:
 python -m unittest discover -s tests -t .
 ```
 
-222 tests, none of which touch a paid API. The Ark adapter is driven through a
+227 tests, none of which touch a paid API. The Ark adapter is driven through a
 fake opener, so the request shape, the no-retry-on-submit rule and the budget
 cap are all asserted without spending anything.

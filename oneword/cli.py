@@ -251,15 +251,54 @@ def _print_drift(report: dict) -> None:
         f"{summary['drifted']} drifted, {summary['review']} to review, "
         f"{summary['not_checked']} not checked"
     )
-    if not report["model_looked"]:
+    # "Nobody was asked" and "everybody was asked and nobody answered" are
+    # different problems with different fixes, and printing one line for both
+    # is how you set a key, see no change, and conclude the key is fine.
+    if report.get("model_errors"):
+        print(f"  a model WAS configured and every call to it failed ({len(report['model_errors'])} distinct):")
+        for reason in report["model_errors"][:3]:
+            print(f"    {reason}")
+        print(
+            "  Nothing below was examined by a model. Check that LLM_MODEL names a "
+            "vision-capable model —\n"
+            "  a text-only one fails exactly like this."
+        )
+    elif not report["model_looked"]:
         print("  (no multimodal model looked; locations screened on pixels, characters unchecked)")
         if summary["not_checked"]:
             print(
                 f"  {summary['not_checked']} character appearance(s) unchecked — a whole-frame "
-                "fingerprint cannot honestly judge a face.\n"
-                "  Set LLM_API_KEY / LLM_MODEL to a vision model and rerun to check them, "
-                "and to find out whether the cast portraits held."
+                "fingerprint cannot honestly judge a face."
             )
+            # Naming which half of the pair is missing turns "set LLM_API_KEY /
+            # LLM_MODEL" from advice into a diagnosis.
+            absent = [n for n in ("LLM_API_KEY", "LLM_MODEL") if not os.getenv(n)]
+            storyboard = summary.get("storyboard_episodes") or []
+            if absent:
+                print(
+                    f"  {' and '.join(absent)} not set in this shell, which is why nothing "
+                    "was asked.\n"
+                    "  In PowerShell these last only for the window you set them in."
+                )
+            elif storyboard:
+                # Not a misconfiguration: grading storyboard cards with a vision
+                # model would buy a visual verdict about pixels no model drew.
+                print(
+                    f"  A model is configured, but episode(s) "
+                    f"{', '.join(str(e) for e in storyboard)} were shot with the offline "
+                    "storyboard vendor,\n"
+                    "  so no model was asked about them on purpose."
+                )
+            else:
+                print(
+                    "  LLM_API_KEY and LLM_MODEL are both set and the footage is real, so "
+                    "this is a bug — please report it."
+                )
+    if report.get("missing_clips"):
+        print(
+            f"  {len(report['missing_clips'])} shot(s) skipped — their clip is not on disk: "
+            + ", ".join(report["missing_clips"][:3])
+        )
     for band in summary.get("unmeasured_bands", []):
         print(
             f"  note: {band} shots were judged with a borrowed threshold — measure it with "
