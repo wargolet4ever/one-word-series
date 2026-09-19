@@ -91,6 +91,14 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--language", default="en", help="en | zh")
     parser.add_argument("--bible", default=None, help="reuse an existing bible.json")
+    parser.add_argument(
+        "--fresh", action="store_true",
+        help=(
+            "ignore clips already on disk and generate every shot again — "
+            "by default a run reuses anything it already paid for, when the "
+            "prompt and vendor match exactly"
+        ),
+    )
     parser.add_argument("--no-model", action="store_true", help="skip the writing model entirely")
     parser.add_argument(
         "--no-drift", action="store_true",
@@ -267,8 +275,15 @@ def main(argv: list[str] | None = None) -> int:
                 chaining=args.chain,
                 music=args.music,
                 music_db=args.music_db,
+                resume=not args.fresh,
             )
             paths = report.pop("_paths")
+            if report["summary"].get("reused_shot_ids"):
+                saved = report["summary"]["reused_saving_cny"]
+                print(
+                    f"  reused {len(report['summary']['reused_shot_ids'])} shot(s) "
+                    f"already on disk" + (f", saving ¥{saved:.2f}" if saved else "")
+                )
             scored = report.get("music")
             if scored and scored.get("error"):
                 print(f"  note: no score — {scored['error']}")
@@ -277,6 +292,11 @@ def main(argv: list[str] | None = None) -> int:
                     f"  score: {scored['track']} at {scored['level_db']:.0f} dB"
                     + (", ducked under dialogue" if scored["ducked_under_dialogue"]
                        else ", fixed level (no sidechain filter in this ffmpeg)")
+                )
+            for dropped in report.get("dropped_chains", []):
+                print(
+                    f"  note: shot {dropped['shot_id']} was shot from text — "
+                    "the platform refused its first frame, so that cut may jump"
                 )
             for stale in report.get("stale_chains", []):
                 print(

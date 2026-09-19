@@ -30,7 +30,7 @@ from typing import Any
 
 from .contracts import BlockerFinding, GeneratedClip
 
-from . import assemble, chain, music as music_mod
+from . import assemble, chain, ledger, music as music_mod
 from .audit import RULE_TRIAGE, RuleTriageAuditor
 from .bible import IDENTITY_CRITICAL_BEATS, BEATS, SeriesBible
 from .voice import SilentVoice, audio_duration, write_srt
@@ -188,6 +188,7 @@ def run_episode(
     chaining: str = "auto",
     music: str | Path | None = None,
     music_db: float = music_mod.DEFAULT_LEVEL_DB,
+    resume: bool = True,
 ) -> dict[str, Any]:
     started = time.time()
     root = Path(output_dir)
@@ -235,6 +236,8 @@ def run_episode(
     # A shot whose last audit still said REGENERATE after the repair cap is a
     # shot the tool did not fix.  The report says so rather than rounding up.
     unresolved: set[str] = set()
+    reused: list[str] = []
+    saved_cny = 0.0
 
     for round_index in range(max_repair_rounds + 1):
         if not pending:
@@ -242,6 +245,37 @@ def run_episode(
         for shot_id in pending:
             shot = by_id[shot_id]
             source_id = chain_links.get(shot_id)
+
+            # Already bought? A run that died at shot 8 left seven paid clips
+            # on disk; buying them again is the most expensive bug this tool
+            # could have. Only an exact prompt and vendor match counts.
+            existing = (
+                ledger.find_reusable(clips_dir, shot_id, prompts[shot_id], vendor.name)
+                if resume and round_index == 0
+                else None
+            )
+            if existing is not None:
+                attempts[shot_id] = existing.attempt
+                clip = GeneratedClip(
+                    shot_id=shot_id, attempt=existing.attempt, provider=vendor.name,
+                    path=existing.path, prompt=prompts[shot_id],
+                    chain_dropped=existing.chain_dropped,
+                )
+                current[shot_id] = clip
+                reused.append(shot_id)
+                saved_cny += existing.cost_cny
+                generation_events.append(
+                    {
+                        "round": round_index, "shot_id": shot_id,
+                        "attempt": existing.attempt, "provider": vendor.name,
+                        "file": existing.path.name, "model_tier": shot["model_tier"],
+                        "continues_shot": existing.continues_shot,
+                        "chain_dropped": existing.chain_dropped,
+                        "reused": True,
+                    }
+                )
+                continue
+
             shot.pop("first_frame", None)
             if source_id and source_id in current:
                 frame = chain.last_frame(
@@ -255,6 +289,13 @@ def run_episode(
             target = clips_dir / f"shot-{int(shot_id):02d}-take-{attempt:02d}.mp4"
             clip = vendor.generate(shot, prompt, attempt, target)
             current[shot_id] = clip
+            ledger.record(
+                target,
+                shot_id=shot_id, attempt=attempt, prompt=prompt, provider=vendor.name,
+                cost_cny=getattr(vendor, "unit_cost", None),
+                chain_dropped=clip.chain_dropped,
+                continues_shot=source_id if shot.get("first_frame") and not clip.chain_dropped else None,
+            )
             generation_events.append(
                 {
                     "round": round_index,
@@ -263,7 +304,10 @@ def run_episode(
                     "provider": vendor.name,
                     "file": target.name,
                     "model_tier": shot["model_tier"],
-                    "continues_shot": source_id if shot.get("first_frame") else None,
+                    "continues_shot": (
+                        source_id if shot.get("first_frame") and not clip.chain_dropped else None
+                    ),
+                    "chain_dropped": clip.chain_dropped,
                 }
             )
 
@@ -366,7 +410,25 @@ def run_episode(
         "dialogue_performed_by_model": spoken,
         "music": scored,
         "chain_links": chain_links,
-        "stale_chains": chain.stale_links(chain_links, generation_events),
+        "stale_chains": chain.stale_links(chain_links, generation_events)
+        + [
+            {
+                "shot_id": shot_id,
+                "continues": source,
+                "reason": (
+                    f"shot {shot_id} was reused from an earlier run but shot {source} "
+                    "was generated again, so it continues a take that is no longer "
+                    "in the episode"
+                ),
+            }
+            for shot_id, source in chain_links.items()
+            if shot_id in reused and source not in reused
+        ],
+        "dropped_chains": [
+            {"shot_id": event["shot_id"], "reason": event["chain_dropped"]}
+            for event in generation_events
+            if event.get("chain_dropped")
+        ],
         "narrated_shots": narrated,
         "auditor": getattr(auditor, "name", "rule-triage"),
         "evidence_source": getattr(auditor, "last_evidence", RULE_TRIAGE),
@@ -399,6 +461,9 @@ def run_episode(
             "initial_generation_count": len(shots),
             "total_generation_count": len(generation_events),
             "repaired_shot_ids": repaired,
+            # What this run did not have to buy again, and what that was worth.
+            "reused_shot_ids": sorted(reused, key=int),
+            "reused_saving_cny": round(saved_cny, 2),
             "whole_film_rerun": False,
             "runtime_sec": built["runtime_sec"],
             "subtitles_burned": built["subtitles_burned"],

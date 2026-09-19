@@ -12,6 +12,7 @@ import json
 import subprocess
 import sys
 import unittest
+import urllib.error
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -245,3 +246,122 @@ class PipelineChainingTests(unittest.TestCase):
         with tmp:
             stale = report["stale_chains"]
         self.assertEqual([item["shot_id"] for item in stale], ["2"])
+
+
+class RefusedFirstFrameTests(unittest.TestCase):
+    """The platform can refuse the frame. That must not cost you the episode.
+
+    Ark's moderation reads a photorealistic face in a first frame as a real
+    photograph and returns 400. Continuing from the last frame is an
+    improvement, not a requirement, so a refusal falls back to text-to-video
+    and says the cut may jump — rather than ending a run that has already been
+    paid for.
+    """
+
+    REFUSAL = (
+        '{"error":{"code":"InputImageSensitiveContentDetected.PrivacyInformation",'
+        '"message":"The request failed because the input image \'content[1]\' '
+        'may contain real person."}}'
+    )
+
+    def setUp(self):
+        patch = mock.patch.dict(
+            vendors.PRICE_CNY,
+            {("doubao-seedance-1-0-lite-t2v-250428", "720p", 5): 0.75},
+        )
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def vendor(self, submissions):
+        config = vendors.ArkConfig(
+            api_key="k", model="doubao-seedance-1-0-lite-t2v-250428",
+            resolution="720p", duration=5, budget_cny=10.0,
+        )
+
+        class R(io.BytesIO):
+            def __enter__(self): return self
+            def __exit__(self, *a): return False
+
+        def opener(request, timeout=None):
+            if request.get_method() == "POST":
+                body = json.loads(request.data.decode("utf-8"))
+                has_image = any(i["type"] == "image_url" for i in body["content"])
+                submissions.append(has_image)
+                if has_image:
+                    raise urllib.error.HTTPError(
+                        request.full_url, 400, "bad request", {},
+                        io.BytesIO(self.REFUSAL.encode("utf-8")),
+                    )
+                return R(json.dumps({"id": "task-1"}).encode("utf-8"))
+            return R(json.dumps(
+                {"status": "succeeded", "content": {"video_url": "https://x/y.mp4"}}
+            ).encode("utf-8"))
+
+        return vendors.SeedanceVendor(config, opener=opener)
+
+    def test_a_refused_frame_is_recognised(self):
+        error = vendors.ArkHTTPError(
+            400, "InputImageSensitiveContentDetected.PrivacyInformation · "
+                 "may contain real person", "url",
+        )
+        self.assertTrue(vendors.refused_the_input_image(error))
+
+    def test_other_400s_are_not_treated_as_a_frame_problem(self):
+        self.assertFalse(
+            vendors.refused_the_input_image(
+                vendors.ArkHTTPError(400, "InvalidParameter · duration", "url")
+            )
+        )
+        self.assertFalse(
+            vendors.refused_the_input_image(
+                vendors.ArkHTTPError(404, "input image not found", "url")
+            )
+        )
+
+    def test_the_shot_is_made_from_text_instead(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            frame = chain.last_frame(make_clip(root / "c.mp4"), root / "f.jpg")
+            submissions = []
+            vendor = self.vendor(submissions)
+            with mock.patch.object(vendor, "download", lambda url, target: target):
+                clip = vendor.generate(
+                    {"shot_id": "2", "first_frame": str(frame)},
+                    "a stairwell", 1, root / "out.mp4",
+                )
+        self.assertEqual(submissions, [True, False])   # tried with, then without
+        self.assertIsNotNone(clip.chain_dropped)
+        self.assertIn("real person", clip.chain_dropped)
+
+    def test_only_the_successful_submit_is_charged(self):
+        """A refused submit creates no task, so it must not count as spend."""
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            frame = chain.last_frame(make_clip(root / "c.mp4"), root / "f.jpg")
+            vendor = self.vendor([])
+            with mock.patch.object(vendor, "download", lambda url, target: target):
+                vendor.generate(
+                    {"shot_id": "2", "first_frame": str(frame)},
+                    "a stairwell", 1, root / "out.mp4",
+                )
+        self.assertEqual(vendor.spent_cny, 0.75)
+
+    def test_a_shot_with_no_frame_to_drop_still_raises(self):
+        """Without a first frame there is nothing to retry differently."""
+
+        config = vendors.ArkConfig(
+            api_key="k", model="doubao-seedance-1-0-lite-t2v-250428",
+            resolution="720p", duration=5, budget_cny=10.0,
+        )
+
+        def opener(request, timeout=None):
+            raise urllib.error.HTTPError(
+                request.full_url, 400, "bad", {},
+                io.BytesIO(self.REFUSAL.encode("utf-8")),
+            )
+
+        vendor = vendors.SeedanceVendor(config, opener=opener)
+        with TemporaryDirectory() as tmp:
+            with self.assertRaises(vendors.ArkHTTPError):
+                vendor.generate({"shot_id": "1"}, "a stairwell", 1, Path(tmp) / "o.mp4")

@@ -100,6 +100,24 @@ def _error_message(exc: urllib.error.HTTPError) -> str:
     return raw.strip()[:400]
 
 
+# A platform can refuse the first frame itself — most often because the frame
+# shows a photorealistic person, which moderation reads as a real photograph.
+# The refusal is about the image, not the prompt, so the shot is still makeable.
+INPUT_IMAGE_REFUSALS = (
+    "inputimagesensitive",
+    "input image",
+    "image content",
+    "may contain real person",
+)
+
+
+def refused_the_input_image(exc: Exception) -> bool:
+    if getattr(exc, "code", None) != 400:
+        return False
+    message = str(exc).lower()
+    return any(marker in message for marker in INPUT_IMAGE_REFUSALS)
+
+
 def ffmpeg_exe() -> str:
     found = shutil.which("ffmpeg")
     if found:
@@ -493,7 +511,26 @@ class SeedanceVendor:
             status="submitting" + (" (continuing)" if first_frame else ""),
             elapsed=0.0,
         )
-        task_id = self.submit(prompt, Path(first_frame) if first_frame else None)
+        chain_dropped: str | None = None
+        try:
+            task_id = self.submit(prompt, Path(first_frame) if first_frame else None)
+        except ArkHTTPError as exc:
+            if not (first_frame and refused_the_input_image(exc)):
+                raise
+            # Continuing from the last frame is an improvement, not a
+            # requirement. Losing a paid episode because an improvement was
+            # refused is the wrong trade, so the shot is made from text and the
+            # report says the chain was dropped. A refused submit creates no
+            # task, so nothing was spent on the attempt.
+            # 300, not 200: the platform's reason runs past 200 characters and
+            # a note that stops mid-sentence is not a reason.
+            chain_dropped = str(exc).split("\n")[0][:300]
+            first_frame = None
+            self._progress(
+                shot_id=shot_id, status="first frame refused — shooting from text",
+                elapsed=time.time() - started,
+            )
+            task_id = self.submit(prompt, None)
         body = self.poll(task_id, shot_id=shot_id)
         content = body.get("content") or {}
         url = content.get("video_url") or content.get("url")
@@ -524,6 +561,7 @@ class SeedanceVendor:
             provider=self.name,
             path=target,
             prompt=prompt,
+            chain_dropped=chain_dropped,
         )
 
 

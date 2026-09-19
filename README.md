@@ -178,6 +178,19 @@ left for you:
   note: shot 3 continues shot 2, which was regenerated afterwards — that cut may jump
 ```
 
+Platforms moderate the first frame as well as the prompt. A photorealistic
+face in a frame reads to Ark's moderation as a real photograph, and it refuses
+the submission. Continuing from the last frame is an improvement, not a
+requirement, so a refusal falls back to text-to-video for that shot and says
+so — an episode you have already paid for is not lost because an enhancement
+was declined:
+
+```
+  note: shot 4 was shot from text — the platform refused its first frame, so that cut may jump
+```
+
+A refused submit creates no task, so the attempt costs nothing.
+
 ### Music and ambience
 
 ```bash
@@ -213,6 +226,21 @@ Eight presets ship: `documentary` `noir` `anime` `storybook` `16mm` `clinical`
 `analog` `stopmotion`. Each names the **medium** first — photographic, cel
 animation, watercolour — then lens, lighting, palette, tone, and what the look
 must never contain.
+
+Combining two looks is a written choice, not a flag. `16mm` wants warm fading
+stock; `noir` wants no colour at all. Overriding one preset with the other just
+gives you the second one, so `styles/16mm-noir.json` picks the fields one at a
+time — the stock and grain from one, the light and palette from the other:
+
+```bash
+oneword rust --style styles/16mm-noir.json
+```
+
+Copy it as the starting point for your own.
+
+**Style does not affect what a clip costs.** Billing follows resolution and
+duration; the prompt text does not enter into it. Pick the look you want and
+save money on `SEEDANCE_RESOLUTION` instead.
 
 ### A style is locked, not a dial
 
@@ -286,6 +314,33 @@ handed to the multimodal comparison, which reads the written facts — the torn
 cuff, the green handrail — instead of counting pixels.
 [`docs/drift-calibration.md`](docs/drift-calibration.md) has the numbers and the
 command that reproduces them.
+
+### Not paying twice
+
+A paid run that dies at shot 8 leaves seven finished clips on disk. By default
+the next run uses them:
+
+```bash
+oneword rust --vendor seedance --out out-real     # picks up where it stopped
+oneword rust --vendor seedance --fresh            # buy everything again
+```
+
+Every generated clip drops a small JSON beside it recording the prompt it was
+made from, the vendor, and what it cost. A clip is reused only when the next
+run would have asked for **exactly the same thing** — same prompt fingerprint,
+same vendor, file still readable.
+
+That one rule covers every case worth covering without special-casing any of
+them. Edit the bible, change the style, switch model or resolution: the prompt
+differs, the fingerprint misses, and the shot is made again. A resume that
+silently kept a clip from a previous look would cost far more than re-buying
+one.
+
+The run says what it skipped and what that was worth:
+
+```
+  reused 7 shot(s) already on disk, saving ¥13.02
+```
 
 ### What a clip costs
 
@@ -397,6 +452,6 @@ produces a film:
 python -m unittest discover -s tests -t .
 ```
 
-124 tests, none of which touch a paid API. The Ark adapter is driven through a
+127 tests, none of which touch a paid API. The Ark adapter is driven through a
 fake opener, so the request shape, the no-retry-on-submit rule and the budget
 cap are all asserted without spending anything.

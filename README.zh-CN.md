@@ -165,6 +165,16 @@ oneword rust --chain off                # 每镜独立生成
   note: shot 3 continues shot 2, which was regenerated afterwards — that cut may jump
 ```
 
+平台不只审 prompt，也审首帧。写实人脸在方舟的审核里会被判成真人照片，
+直接拒绝提交。续接是锦上添花不是必需品，所以被拒时那一镜退回文生视频并明说 ——
+一集已经付过钱的片子，不该因为一个增强功能被拒就丢掉：
+
+```
+  note: shot 4 was shot from text — the platform refused its first frame, so that cut may jump
+```
+
+被拒的提交不会建任务，所以那次尝试不花钱。
+
 ### 音乐与环境声
 
 ```bash
@@ -195,6 +205,19 @@ oneword rust --style ./my-look.json         # 自己的，键和预设一样
 内置八种：`documentary` `noir` `anime` `storybook` `16mm` `clinical`
 `analog` `stopmotion`。每一种先点名**媒介** —— 实拍、赛璐珞动画、水彩 ——
 再是镜头、布光、色板、基调，以及这个look绝对不能出现什么。
+
+把两种 look 合起来是一次书面选择，不是一个开关。`16mm` 要暖色褪色片基，
+`noir` 要完全无彩色 —— 用一个覆盖另一个，结果就只是后面那个。所以
+`styles/16mm-noir.json` 是逐字段挑的：片基和颗粒取自前者，光和色板取自后者：
+
+```bash
+oneword rust --style styles/16mm-noir.json
+```
+
+想写自己的，拿它当起点复制一份。
+
+**风格不影响一条片子的价格。** 计费只看分辨率和时长，prompt 内容不进这个账。
+挑你真正想要的 look，要省钱就去压 `SEEDANCE_RESOLUTION`。
 
 ### 风格是锁定项，不是旋钮
 
@@ -257,6 +280,29 @@ oneword drift out/rust          # 多集运行结束后也会自动跑一遍
 分布是重叠的：大约 80% 的比较落进一个初筛拒绝独自决定的 review 区间，交给多模态
 比对——后者读的是写下来的事实（袖口有没有破、扶手是不是绿的），不是数像素。
 [`docs/drift-calibration.md`](docs/drift-calibration.md) 里有全部数字和复现命令。
+
+### 不为同一条片子付两次钱
+
+一次付费运行在第 8 镜挂掉，硬盘上已经躺着 7 条成片。默认情况下，下一次运行直接用它们：
+
+```bash
+oneword rust --vendor seedance --out out-real     # 从断掉的地方接着走
+oneword rust --vendor seedance --fresh            # 全部重新买一遍
+```
+
+每条生成出来的 clip 旁边会落一个小 JSON，记着它是从哪条 prompt、哪个 vendor
+生成的，花了多少钱。只有当下一次运行会问一模一样的东西时才复用 ——
+prompt 指纹相同、vendor 相同、文件还读得出来。
+
+这一条规则覆盖了所有值得覆盖的情况，一个都不用特判：改了圣经、换了风格、
+换了模型或分辨率 —— prompt 变了，指纹对不上，那一镜就重做。一次「悄悄留用了
+上一个 look 的片子」的续跑，代价远高于重买一条。
+
+运行结束会说清楚跳过了什么、值多少钱：
+
+```
+  reused 7 shot(s) already on disk, saving ¥13.02
+```
 
 ### 一条片子多少钱
 
@@ -355,5 +401,5 @@ README 里的说法都是代码确实会做的事。这一节是更窄的一组�
 python -m unittest discover -s tests -t .
 ```
 
-124 个测试，全部不碰付费 API。方舟适配器走 fake opener，
+127 个测试，全部不碰付费 API。方舟适配器走 fake opener，
 所以请求结构、提交不重试、预算上限这三件事都被断言了，且不花钱。

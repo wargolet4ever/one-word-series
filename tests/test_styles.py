@@ -174,3 +174,35 @@ class StyleAndDriftTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class CombinedStyleTests(unittest.TestCase):
+    """Combining two looks is a written choice, not an automatic merge."""
+
+    def test_the_shipped_combination_resolves_and_is_complete(self):
+        path = Path(__file__).resolve().parents[1] / "styles" / "16mm-noir.json"
+        style = styles.resolve(str(path))
+        for key in ("render", "lens", "lighting", "palette", "tone"):
+            self.assertTrue(style[key], key)
+        self.assertEqual(style["name"], "16mm-noir")
+
+    def test_it_keeps_the_stock_from_one_and_the_palette_from_the_other(self):
+        path = Path(__file__).resolve().parents[1] / "styles" / "16mm-noir.json"
+        style = styles.resolve(str(path))
+        self.assertIn("16mm", style["render"])          # from the film preset
+        self.assertIn("black and white", style["palette"])  # from noir
+        # And it does not carry noir's contradiction with 16mm's warm stock.
+        self.assertNotIn("warm fading stock", style["palette"])
+
+    def test_overriding_two_presets_field_by_field_would_not_have_worked(self):
+        """Why the combination is written out rather than computed.
+
+        A naive merge takes every field from whichever preset came last, so
+        `16mm+noir` is just noir. The conflict is real — one look wants warm
+        faded stock, the other wants no colour at all — and only a person can
+        decide which parts survive.
+        """
+
+        merged = dict(styles.get("16mm"), **styles.get("noir"))
+        self.assertEqual(merged["palette"], styles.get("noir")["palette"])
+        self.assertNotIn("16mm", merged["render"])

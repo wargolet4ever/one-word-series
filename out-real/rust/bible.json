@@ -3,14 +3,15 @@
   "logline": "A two-hander about what rust does to the people who refuse to name it.",
   "world": {
     "premise": "A sealed residential block where rust has begun to appear on surfaces.",
-    "tone": "restrained, cold, documentary",
+    "tone": "nostalgic, immediate, imperfect",
     "era": "near future",
-    "palette": "desaturated teal and rust, single warm practical light"
+    "palette": "warm fading stock, green-leaning shadows, milky blacks"
   },
   "visual_grammar": {
-    "lens": "35mm anamorphic, shallow depth of field",
-    "lighting": "hard key from one practical source, deep shadow",
-    "negative": "text, watermark, extra fingers, warped architecture, style change"
+    "render": "photographic, 16mm film stock with visible grain and gate weave",
+    "lens": "25mm, moderate depth of field, occasional focus breathing",
+    "lighting": "available light, blown windows, halation around highlights",
+    "negative": "text, watermark, extra fingers, warped architecture, style change, clean digital sharpness, noise reduction, HDR, stabilised smoothness"
   },
   "characters": {
     "C1": {
@@ -88,7 +89,7 @@
         },
         {
           "action": "Wen forces the door open and finds the rust already inside",
-          "location_id": "L2",
+          "location_id": "L1",
           "character_ids": [
             "C1"
           ],
@@ -97,7 +98,7 @@
         },
         {
           "action": "Lin says the thing Wen has been refusing to hear",
-          "location_id": "L1",
+          "location_id": "L2",
           "character_ids": [
             "C1",
             "C2"
@@ -132,7 +133,7 @@
         },
         {
           "action": "Wen forces the door open and finds the rust already inside",
-          "location_id": "L2",
+          "location_id": "L1",
           "character_ids": [
             "C1"
           ],
@@ -141,7 +142,7 @@
         },
         {
           "action": "Lin says the thing Wen has been refusing to hear",
-          "location_id": "L1",
+          "location_id": "L2",
           "character_ids": [
             "C1",
             "C2"
@@ -167,14 +168,20 @@
     "turn",
     "cost"
   ],
+  "style": {
+    "style_version": "style-1",
+    "name": "16mm",
+    "label": "16mm film"
+  },
   "bible_version": "series-bible-1",
   "seed_word": "rust",
   "slug": "rust",
-  "created_at": "2026-09-19T03:33:35+00:00",
+  "created_at": "2026-09-19T03:48:13+00:00",
   "shots_per_episode": 4,
   "provenance": {
     "source": "local-template",
     "model": null,
-    "error": null
+    "error": null,
+    "style": "16mm"
   }
 }

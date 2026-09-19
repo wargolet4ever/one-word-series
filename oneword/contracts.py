@@ -55,6 +55,10 @@ class GeneratedClip:
     provider: str
     path: Path
     prompt: str
+    # Set when a first frame was refused and the shot was made from text
+    # instead, so the report can say the cut may jump rather than implying a
+    # continuity that was never achieved.
+    chain_dropped: str | None = None
 
 
 @runtime_checkable
