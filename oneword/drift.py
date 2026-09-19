@@ -272,7 +272,17 @@ def audit_series(
 
     reports = _episode_reports(root)
     if not reports:
-        raise DriftError(f"no episode reports under {root}")
+        # The output directory is a flag, so a machine usually has several.
+        # Naming the ones that do hold a series saves a guess.
+        elsewhere = sorted(
+            str(candidate.parent)
+            for candidate in root.parent.parent.glob("*/*/bible.json")
+            if candidate.parent != root
+        )[:5] if root.parent.parent.is_dir() else []
+        message = f"no episode reports under {root}"
+        if elsewhere:
+            message += "\n  Series directories that do have them:\n    " + "\n    ".join(elsewhere)
+        raise DriftError(message)
 
     registry = ReferenceRegistry(root)
     if reset_references:
@@ -297,6 +307,7 @@ def audit_series(
     findings: list[dict[str, Any]] = []
     model_used = False
     model_errors: list[str] = []
+    missing_clips: list[str] = []
     # (episode, shot_id) → fingerprints, so a chained shot can also be measured
     # against the shot it actually continued.
     by_shot: dict[tuple[int, str], list[dict[str, Any]]] = {}
@@ -316,6 +327,9 @@ def audit_series(
         for shot in data["shots"]:
             clip = episode_dir / "clips" / shot["file"]
             if not clip.is_file():
+                # Silently skipping produces a report that says "0 appearances"
+                # and looks like a series with nothing wrong with it.
+                missing_clips.append(f"ep{episode} shot {shot['shot_id']} ({shot['file']})")
                 continue
             frames = extract_frames(clip, workdir, FRAME_POSITIONS)
             if not frames:
@@ -417,6 +431,19 @@ def audit_series(
                     }
                 )
 
+    # Every clip gone is not a clean series, it is a series nobody could look
+    # at. `.mp4` is in .gitignore, so a cloned or copied series directory has
+    # the reports and none of the footage — exactly the shape that would
+    # otherwise produce a confident, empty, meaningless report.
+    if missing_clips and not findings:
+        raise DriftError(
+            f"none of the {len(missing_clips)} clips under {root} are on disk, so there "
+            "was nothing to compare.\n"
+            "  The reports survive a copy or a git clone; the .mp4 files do not "
+            "(.gitignore excludes them).\n"
+            "  Point this at the directory the run actually wrote, or shoot it again."
+        )
+
     drifted = [f for f in findings if f["verdict"] == DRIFTED]
     review = [f for f in findings if f["verdict"] == REVIEW]
     unchecked = [f for f in findings if f["verdict"] == NOT_CHECKED]
@@ -450,6 +477,7 @@ def audit_series(
         # A configured model that never answered is a different situation from
         # no model at all, and the report has to be able to tell you which.
         "model_errors": model_errors,
+        "missing_clips": missing_clips,
         "findings": findings,
         "summary": {
             "checked": len(findings),
@@ -588,6 +616,13 @@ def render_html(report: dict[str, Any]) -> str:
             + ", ".join(str(e) for e in report["summary"]["storyboard_episodes"])
             + " were shot with the offline storyboard vendor. Those pixels are stand-ins, "
             "so agreement between them says nothing about whether a real video model drifts."
+        )
+
+    if report.get("missing_clips"):
+        caveats.append(
+            f"{len(report['missing_clips'])} shot(s) were skipped because their clip is "
+            "not on disk: " + ", ".join(report["missing_clips"][:4])
+            + ". Those appearances are absent from this report, not consistent."
         )
 
     screened = [f for f in report["findings"] if f.get("tripped_by")]

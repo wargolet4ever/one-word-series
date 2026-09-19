@@ -10,14 +10,29 @@ silently on another.
 
 from __future__ import annotations
 
+import json
+import subprocess
 import sys
 import unittest.mock
 import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from oneword import drift, metrics  # noqa: E402
+from oneword import drift, metrics, vendors  # noqa: E402
+from oneword.bible import build_bible  # noqa: E402
+
+
+def make_clip(target: Path) -> Path:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        [vendors.ffmpeg_exe(), "-hide_banner", "-loglevel", "error",
+         "-f", "lavfi", "-i", "color=c=navy:s=320x180:d=1:r=12",
+         "-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", str(target)],
+        capture_output=True, check=True,
+    )
+    return target
 
 
 def episode_report(events, chain_links=None):
@@ -190,6 +205,67 @@ class SilentModelFailureTests(unittest.TestCase):
         with unittest.mock.patch.object(drift.llm, "configured", return_value=False):
             self.assertIsNone(drift.visual_compare(Path("a"), Path("b"), "f", errors))
         self.assertEqual(errors, [])
+
+
+class MissingFootageTests(unittest.TestCase):
+    """A series whose clips are gone must not read as a series that is fine.
+
+    `.mp4` is in .gitignore, so a cloned or copied series directory keeps every
+    report and none of the footage. Skipping those shots quietly produced a
+    confident report over zero appearances.
+    """
+
+    def series(self, tmp, with_clips: bool):
+        root = Path(tmp) / "rust"
+        (root / "episode-01" / "clips").mkdir(parents=True)
+        bible, _ = build_bible("rust", episodes=1, shots=3, allow_model=False, style="noir")
+        bible.save(root / "bible.json")
+        shots = [
+            {"shot_id": str(n), "file": f"shot-0{n}-take-01.mp4",
+             "location": bible.data["locations"]["L1"]["name"], "characters": []}
+            for n in (1, 2, 3)
+        ]
+        (root / "episode-01" / "episode-report.json").write_text(
+            json.dumps({
+                "episode": 1, "vendor_is_generative": True, "shots": shots,
+                "chain_links": {}, "generation_events": [],
+            }),
+            encoding="utf-8",
+        )
+        if with_clips:
+            for shot in shots:
+                make_clip(root / "episode-01" / "clips" / shot["file"])
+        return root
+
+    def test_a_series_with_no_footage_left_is_an_error_not_a_clean_report(self):
+        with TemporaryDirectory() as tmp:
+            root = self.series(tmp, with_clips=False)
+            with self.assertRaises(drift.DriftError) as caught:
+                drift.audit_series(root, use_model=False)
+        message = str(caught.exception)
+        self.assertIn("3 clips", message)
+        self.assertIn(".gitignore", message)
+
+    def test_footage_that_is_present_audits_normally(self):
+        with TemporaryDirectory() as tmp:
+            root = self.series(tmp, with_clips=True)
+            report = drift.audit_series(root, use_model=False)
+        self.assertEqual(report["missing_clips"], [])
+        self.assertTrue(report["findings"])
+
+    def test_a_wrong_directory_names_the_ones_that_would_work(self):
+        """The error that sent someone to out/ when the run wrote out-real/."""
+
+        with TemporaryDirectory() as tmp:
+            self.series(Path(tmp) / "out-real", with_clips=True)
+            empty = Path(tmp) / "out" / "rust"
+            empty.mkdir(parents=True)
+            build_bible("rust", episodes=1, shots=3, allow_model=False)[0].save(
+                empty / "bible.json"
+            )
+            with self.assertRaises(drift.DriftError) as caught:
+                drift.audit_series(empty, use_model=False)
+        self.assertIn("out-real", str(caught.exception))
 
 
 class ValidatorTests(unittest.TestCase):

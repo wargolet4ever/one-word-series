@@ -1,6 +1,6 @@
 {
   "report_version": "series-drift-1",
-  "generated_at": "2026-09-19T06:38:16+00:00",
+  "generated_at": "2026-09-19T08:38:17+00:00",
   "series_title": "《rust》",
   "seed_word": "rust",
   "style": "16mm",
@@ -12,6 +12,13 @@
     "same_place_max": 0.03,
     "different_place_min": 0.09,
     "calibration": "docs/drift-calibration.md"
+  },
+  "bands": {
+    "reference": {
+      "consistent_max": 0.03,
+      "drifted_min": 0.09,
+      "measured_on": "synthetic harness, 6 rooms x 8 shots (docs/drift-calibration.md)"
+    }
   },
   "references": [
     {
@@ -48,6 +55,9 @@
     }
   ],
   "model_looked": false,
+  "model_errors": [
+    "HTTPError: HTTP Error 404: Not Found"
+  ],
   "findings": [
     {
       "episode": 1,
@@ -55,11 +65,24 @@
       "kind": "location",
       "id": "L1",
       "name": "Stairwell C",
-      "verdict": "REFERENCE SET",
-      "evidence_source": "NO REFERENCE YET",
-      "distance": null,
+      "verdict": "CONSISTENT",
+      "evidence_source": "REFERENCE PIXEL SCREEN",
+      "distance": {
+        "colour": 0.0,
+        "structure": 0.0,
+        "composite": 0.0
+      },
       "differences": [],
-      "note": "first appearance — adopted as the reference for Stairwell C"
+      "tripped_by": "neither",
+      "chain_state": "not chained",
+      "chain_detail": "cuts to another location",
+      "band": "reference",
+      "neighbour_distance": null,
+      "continues_shot": "",
+      "reference_kind": "first appearance",
+      "portrait_refused": "",
+      "reference_episode": 1,
+      "reference_shot": "1"
     },
     {
       "episode": 1,
@@ -67,11 +90,20 @@
       "kind": "character",
       "id": "C1",
       "name": "Wen",
-      "verdict": "REFERENCE SET",
-      "evidence_source": "NO REFERENCE YET",
+      "verdict": "NOT CHECKED",
+      "evidence_source": "NOT CHECKED",
       "distance": null,
       "differences": [],
-      "note": "first appearance — adopted as the reference for Wen"
+      "tripped_by": null,
+      "chain_state": "not chained",
+      "chain_detail": "cuts to another location",
+      "band": "reference",
+      "neighbour_distance": null,
+      "continues_shot": "",
+      "reference_kind": "first appearance",
+      "portrait_refused": "",
+      "reference_episode": 1,
+      "reference_shot": "1"
     },
     {
       "episode": 1,
@@ -87,6 +119,18 @@
         "composite": 0.0103
       },
       "differences": [],
+      "tripped_by": "both",
+      "chain_state": "chained",
+      "chain_detail": "from shot 1",
+      "band": "reference",
+      "neighbour_distance": {
+        "colour": 0.0116,
+        "structure": 0.0078,
+        "composite": 0.0103
+      },
+      "continues_shot": "1",
+      "reference_kind": "first appearance",
+      "portrait_refused": "",
       "reference_episode": 1,
       "reference_shot": "1"
     },
@@ -100,6 +144,14 @@
       "evidence_source": "NOT CHECKED",
       "distance": null,
       "differences": [],
+      "tripped_by": null,
+      "chain_state": "chained",
+      "chain_detail": "from shot 1",
+      "band": "reference",
+      "neighbour_distance": null,
+      "continues_shot": "1",
+      "reference_kind": "first appearance",
+      "portrait_refused": "",
       "reference_episode": 1,
       "reference_shot": "1"
     },
@@ -109,11 +161,24 @@
       "kind": "location",
       "id": "L2",
       "name": "Unit 704",
-      "verdict": "REFERENCE SET",
-      "evidence_source": "NO REFERENCE YET",
-      "distance": null,
+      "verdict": "CONSISTENT",
+      "evidence_source": "REFERENCE PIXEL SCREEN",
+      "distance": {
+        "colour": 0.0,
+        "structure": 0.0,
+        "composite": 0.0
+      },
       "differences": [],
-      "note": "first appearance — adopted as the reference for Unit 704"
+      "tripped_by": "neither",
+      "chain_state": "not chained",
+      "chain_detail": "cuts to another location",
+      "band": "reference",
+      "neighbour_distance": null,
+      "continues_shot": "",
+      "reference_kind": "first appearance",
+      "portrait_refused": "",
+      "reference_episode": 1,
+      "reference_shot": "3"
     },
     {
       "episode": 1,
@@ -125,6 +190,14 @@
       "evidence_source": "NOT CHECKED",
       "distance": null,
       "differences": [],
+      "tripped_by": null,
+      "chain_state": "not chained",
+      "chain_detail": "cuts to another location",
+      "band": "reference",
+      "neighbour_distance": null,
+      "continues_shot": "",
+      "reference_kind": "first appearance",
+      "portrait_refused": "",
       "reference_episode": 1,
       "reference_shot": "1"
     },
@@ -134,11 +207,20 @@
       "kind": "character",
       "id": "C2",
       "name": "Lin",
-      "verdict": "REFERENCE SET",
-      "evidence_source": "NO REFERENCE YET",
+      "verdict": "NOT CHECKED",
+      "evidence_source": "NOT CHECKED",
       "distance": null,
       "differences": [],
-      "note": "first appearance — adopted as the reference for Lin"
+      "tripped_by": null,
+      "chain_state": "not chained",
+      "chain_detail": "cuts to another location",
+      "band": "reference",
+      "neighbour_distance": null,
+      "continues_shot": "",
+      "reference_kind": "first appearance",
+      "portrait_refused": "",
+      "reference_episode": 1,
+      "reference_shot": "3"
     },
     {
       "episode": 1,
@@ -154,6 +236,14 @@
         "composite": 0.1116
       },
       "differences": [],
+      "tripped_by": "colour",
+      "chain_state": "chain refused",
+      "chain_detail": "Ark returned HTTP 400 for model 'doubao-seedance-2-0-mini-260615': InputImageSensitiveContentDetected.PrivacyInformation · The request failed because the input image 'content[1]' may contain real person. Request id: 0217897990217982cb8822a4864991e162f30172d7ae7b6e4d638",
+      "band": "reference",
+      "neighbour_distance": null,
+      "continues_shot": "",
+      "reference_kind": "first appearance",
+      "portrait_refused": "",
       "reference_episode": 1,
       "reference_shot": "3"
     },
@@ -167,6 +257,14 @@
       "evidence_source": "NOT CHECKED",
       "distance": null,
       "differences": [],
+      "tripped_by": null,
+      "chain_state": "chain refused",
+      "chain_detail": "Ark returned HTTP 400 for model 'doubao-seedance-2-0-mini-260615': InputImageSensitiveContentDetected.PrivacyInformation · The request failed because the input image 'content[1]' may contain real person. Request id: 0217897990217982cb8822a4864991e162f30172d7ae7b6e4d638",
+      "band": "reference",
+      "neighbour_distance": null,
+      "continues_shot": "",
+      "reference_kind": "first appearance",
+      "portrait_refused": "",
       "reference_episode": 1,
       "reference_shot": "1"
     },
@@ -184,6 +282,14 @@
         "composite": 0.0716
       },
       "differences": [],
+      "tripped_by": "colour",
+      "chain_state": "not chained",
+      "chain_detail": "cuts to another location",
+      "band": "reference",
+      "neighbour_distance": null,
+      "continues_shot": "",
+      "reference_kind": "first appearance",
+      "portrait_refused": "",
       "reference_episode": 1,
       "reference_shot": "1"
     },
@@ -197,6 +303,14 @@
       "evidence_source": "NOT CHECKED",
       "distance": null,
       "differences": [],
+      "tripped_by": null,
+      "chain_state": "not chained",
+      "chain_detail": "cuts to another location",
+      "band": "reference",
+      "neighbour_distance": null,
+      "continues_shot": "",
+      "reference_kind": "first appearance",
+      "portrait_refused": "",
       "reference_episode": 1,
       "reference_shot": "1"
     },
@@ -214,6 +328,18 @@
         "composite": 0.0754
       },
       "differences": [],
+      "tripped_by": "colour",
+      "chain_state": "chained",
+      "chain_detail": "from shot 1",
+      "band": "reference",
+      "neighbour_distance": {
+        "colour": 0.015,
+        "structure": 0.001,
+        "composite": 0.0101
+      },
+      "continues_shot": "1",
+      "reference_kind": "first appearance",
+      "portrait_refused": "",
       "reference_episode": 1,
       "reference_shot": "1"
     },
@@ -227,6 +353,14 @@
       "evidence_source": "NOT CHECKED",
       "distance": null,
       "differences": [],
+      "tripped_by": null,
+      "chain_state": "chained",
+      "chain_detail": "from shot 1",
+      "band": "reference",
+      "neighbour_distance": null,
+      "continues_shot": "1",
+      "reference_kind": "first appearance",
+      "portrait_refused": "",
       "reference_episode": 1,
       "reference_shot": "1"
     },
@@ -244,6 +378,14 @@
         "composite": 0.1122
       },
       "differences": [],
+      "tripped_by": "colour",
+      "chain_state": "not chained",
+      "chain_detail": "cuts to another location",
+      "band": "reference",
+      "neighbour_distance": null,
+      "continues_shot": "",
+      "reference_kind": "first appearance",
+      "portrait_refused": "",
       "reference_episode": 1,
       "reference_shot": "3"
     },
@@ -257,6 +399,14 @@
       "evidence_source": "NOT CHECKED",
       "distance": null,
       "differences": [],
+      "tripped_by": null,
+      "chain_state": "not chained",
+      "chain_detail": "cuts to another location",
+      "band": "reference",
+      "neighbour_distance": null,
+      "continues_shot": "",
+      "reference_kind": "first appearance",
+      "portrait_refused": "",
       "reference_episode": 1,
       "reference_shot": "1"
     },
@@ -270,6 +420,14 @@
       "evidence_source": "NOT CHECKED",
       "distance": null,
       "differences": [],
+      "tripped_by": null,
+      "chain_state": "not chained",
+      "chain_detail": "cuts to another location",
+      "band": "reference",
+      "neighbour_distance": null,
+      "continues_shot": "",
+      "reference_kind": "first appearance",
+      "portrait_refused": "",
       "reference_episode": 1,
       "reference_shot": "3"
     },
@@ -287,6 +445,14 @@
         "composite": 0.1234
       },
       "differences": [],
+      "tripped_by": "colour",
+      "chain_state": "chain refused",
+      "chain_detail": "Ark returned HTTP 400 for model 'doubao-seedance-2-0-mini-260615': InputImageSensitiveContentDetected.PrivacyInformation · The request failed because the input image 'content[1]' may contain real person. Request id: 0217897996394271883cd0e543057f1d760ca21bba67f3c53b92d",
+      "band": "reference",
+      "neighbour_distance": null,
+      "continues_shot": "",
+      "reference_kind": "first appearance",
+      "portrait_refused": "",
       "reference_episode": 1,
       "reference_shot": "3"
     },
@@ -300,6 +466,14 @@
       "evidence_source": "NOT CHECKED",
       "distance": null,
       "differences": [],
+      "tripped_by": null,
+      "chain_state": "chain refused",
+      "chain_detail": "Ark returned HTTP 400 for model 'doubao-seedance-2-0-mini-260615': InputImageSensitiveContentDetected.PrivacyInformation · The request failed because the input image 'content[1]' may contain real person. Request id: 0217897996394271883cd0e543057f1d760ca21bba67f3c53b92d",
+      "band": "reference",
+      "neighbour_distance": null,
+      "continues_shot": "",
+      "reference_kind": "first appearance",
+      "portrait_refused": "",
       "reference_episode": 1,
       "reference_shot": "1"
     }
@@ -308,8 +482,9 @@
     "checked": 18,
     "drifted": 3,
     "review": 2,
-    "not_checked": 8,
+    "not_checked": 10,
     "status": "DRIFT FOUND",
-    "storyboard_episodes": []
+    "storyboard_episodes": [],
+    "unmeasured_bands": []
   }
 }
