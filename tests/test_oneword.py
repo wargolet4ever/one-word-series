@@ -34,6 +34,17 @@ def make_bible(episodes: int = 2, shots: int = 4) -> SeriesBible:
     return bible
 
 
+
+TEST_MODEL = "doubao-seedance-1-0-lite-t2v-250428"
+
+
+def with_test_price(case, model=TEST_MODEL, resolution="720p", duration=5, price=0.75):
+    """Prices live outside the code now, so a test that spends must supply one."""
+
+    patch = mock.patch.dict(vendors.PRICE_CNY, {(model, resolution, duration): price})
+    patch.start()
+    case.addCleanup(patch.stop)
+
 class StubVendor:
     """Writes a tiny real file; records every prompt it was given."""
 
@@ -246,6 +257,9 @@ class AssemblyTests(unittest.TestCase):
 
 
 class SeedanceTests(unittest.TestCase):
+    def setUp(self):
+        with_test_price(self)
+
     def config(self, **kwargs):
         base = dict(api_key="test-key", model="doubao-seedance-1-0-lite-t2v-250428",
                     resolution="720p", duration=5, budget_cny=1.0)
@@ -375,6 +389,9 @@ class ContractTests(unittest.TestCase):
 
 
 class ArkErrorMessageTests(unittest.TestCase):
+    def setUp(self):
+        with_test_price(self)
+
     """A 404 must arrive carrying the platform's own explanation."""
 
     def config(self, **kwargs):
@@ -424,6 +441,9 @@ class ArkErrorMessageTests(unittest.TestCase):
 
 
 class ProgressTests(unittest.TestCase):
+    def setUp(self):
+        with_test_price(self)
+
     """A paid run must show it is alive while a clip generates."""
 
     def vendor(self, statuses, events):

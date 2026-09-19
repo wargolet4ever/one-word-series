@@ -38,14 +38,14 @@ POLL_TIMEOUT_S = 600
 POLL_RETRIES = 2
 RETRYABLE_STATUS = {408, 409, 425, 429, 500, 502, 503, 504}
 
-# Whitelist, not a formula.  An unpriced combination is refused rather than
-# guessed at — the repo's existing rule for anything that spends money.
-PRICE_CNY = {
-    ("doubao-seedance-1-0-lite-t2v-250428", "720p", 5): 0.75,
-    ("doubao-seedance-1-0-lite-t2v-250428", "720p", 10): 1.50,
-    ("doubao-seedance-1-0-pro-250528", "720p", 5): 2.10,
-    ("doubao-seedance-1-0-pro-250528", "1080p", 5): 4.20,
-}
+# Deliberately empty. Prices are per-account, per-model, per-region and they
+# change; a number shipped in source is a number that is wrong for somebody and
+# that an upgrade silently restores over whatever they corrected. So the table
+# lives outside the code — in prices.json or ONEWORD_PRICE — and an unpriced
+# combination is refused rather than guessed at.
+PRICE_CNY: dict[tuple[str, str, int], float] = {}
+
+PRICE_FILE_NAME = "prices.json"
 
 
 class VendorError(OneWordError):
@@ -269,13 +269,63 @@ class ArkConfig:
         )
 
 
+def price_file() -> Path:
+    """Where the price table lives.  ONEWORD_PRICES overrides the default."""
+
+    override = os.getenv("ONEWORD_PRICES")
+    return Path(override) if override else Path.cwd() / PRICE_FILE_NAME
+
+
+def load_prices() -> dict[tuple[str, str, int], float]:
+    """Built-ins, then prices.json, then ONEWORD_PRICE for the current run.
+
+    Shape of the file — model, resolution, duration in seconds:
+
+        {"doubao-seedance-2-0-mini-260615": {"480p": {"5": 1.86}}}
+    """
+
+    table = dict(PRICE_CNY)
+    path = price_file()
+    if path.is_file():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except ValueError as exc:
+            raise VendorError(f"{path} is not valid JSON: {exc}") from exc
+        for model, by_resolution in (data or {}).items():
+            for resolution, by_duration in (by_resolution or {}).items():
+                for duration, price in (by_duration or {}).items():
+                    try:
+                        table[(str(model), str(resolution), int(duration))] = float(price)
+                    except (TypeError, ValueError) as exc:
+                        raise VendorError(
+                            f"{path}: bad price for {model}/{resolution}/{duration}"
+                        ) from exc
+    return table
+
+
 def estimated_cost_cny(config: ArkConfig) -> float:
     key = (config.model, config.resolution, int(config.duration))
-    if key not in PRICE_CNY:
+
+    # A single price for this exact run, for when you just want to go.
+    direct = os.getenv("ONEWORD_PRICE")
+    if direct:
+        try:
+            return float(direct)
+        except ValueError as exc:
+            raise VendorError(f"ONEWORD_PRICE is not a number: {direct!r}") from exc
+
+    table = load_prices()
+    if key not in table:
+        model, resolution, duration = key
         raise VendorError(
-            f"no verified price for {key}; add it to PRICE_CNY rather than guessing"
+            f"no verified price for {model} at {resolution}/{duration}s.\n"
+            "  Look it up on the platform's pricing page — a guessed number makes "
+            "the budget cap meaningless — then either:\n"
+            f"    set ONEWORD_PRICE=<yuan per clip>   (this run only)\n"
+            f"    or put it in {price_file()}:\n"
+            f'      {{"{model}": {{"{resolution}": {{"{duration}": 1.86}}}}}}'
         )
-    return PRICE_CNY[key]
+    return table[key]
 
 
 class SeedanceVendor:

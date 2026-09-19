@@ -17,6 +17,8 @@ from tempfile import TemporaryDirectory
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from unittest import mock  # noqa: E402
+
 from oneword import chain, vendors  # noqa: E402
 
 
@@ -108,6 +110,14 @@ class StaleChainTests(unittest.TestCase):
 
 
 class ArkPayloadTests(unittest.TestCase):
+    def setUp(self):
+        patch = mock.patch.dict(
+            vendors.PRICE_CNY,
+            {("doubao-seedance-1-0-lite-t2v-250428", "720p", 5): 0.75},
+        )
+        patch.start()
+        self.addCleanup(patch.stop)
+
     def config(self):
         return vendors.ArkConfig(
             api_key="k", model="doubao-seedance-1-0-lite-t2v-250428",

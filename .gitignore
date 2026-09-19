@@ -10,6 +10,7 @@ venv/
 
 # generated series live outside version control
 out/
+prices.json
 *.mp4
 *.wav
 *.srt

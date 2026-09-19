@@ -287,6 +287,27 @@ cuff, the green handrail — instead of counting pixels.
 [`docs/drift-calibration.md`](docs/drift-calibration.md) has the numbers and the
 command that reproduces them.
 
+### What a clip costs
+
+The budget cap is only worth having if the number behind it is real, so prices
+are **not** shipped in the source. They are per-account, per-model, per-region
+and they change; a number in the code is a number that is wrong for somebody,
+and an upgrade would silently restore it over whatever they had corrected.
+
+```bash
+export ONEWORD_PRICE=1.86        # this run only
+cp prices.example.json prices.json && $EDITOR prices.json   # or keep it
+```
+
+`prices.json` is model → resolution → duration → yuan:
+
+```json
+{ "doubao-seedance-2-0-mini-260615": { "480p": { "5": 1.86 } } }
+```
+
+An unpriced combination is refused before anything is submitted, and the error
+prints the exact line to add.
+
 ## Rules about spending money
 
 | | automatic retries | why |
@@ -295,8 +316,8 @@ command that reproduces them.
 | `GET` poll / fetch | ≤2 | free and idempotent |
 
 * Without `ENABLE_VIDEO_GENERATION=1` the paid vendor cannot even be constructed.
-* Pricing is a whitelist, not a formula. An unpriced (model, resolution,
-  duration) combination is refused rather than guessed at.
+* Pricing is a whitelist you supply, not a formula and not a shipped guess.
+  An unpriced (model, resolution, duration) combination is refused.
 * `VIDEO_BUDGET_CNY` raises `BudgetExceeded` *before* submitting, not after.
 * One run holds exactly one vendor; report validation rejects mixed-vendor runs.
 
@@ -376,6 +397,6 @@ produces a film:
 python -m unittest discover -s tests -t .
 ```
 
-116 tests, none of which touch a paid API. The Ark adapter is driven through a
+124 tests, none of which touch a paid API. The Ark adapter is driven through a
 fake opener, so the request shape, the no-retry-on-submit rule and the budget
 cap are all asserted without spending anything.
