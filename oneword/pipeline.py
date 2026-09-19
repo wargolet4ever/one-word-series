@@ -30,7 +30,7 @@ from typing import Any
 
 from .contracts import BlockerFinding, GeneratedClip
 
-from . import assemble, chain, ledger, music as music_mod
+from . import assemble, cast as cast_mod, chain, ledger, music as music_mod
 from .audit import RULE_TRIAGE, RuleTriageAuditor
 from .bible import IDENTITY_CRITICAL_BEATS, BEATS, SeriesBible
 from .voice import SilentVoice, audio_duration, write_srt
@@ -189,6 +189,8 @@ def run_episode(
     music: str | Path | None = None,
     music_db: float = music_mod.DEFAULT_LEVEL_DB,
     resume: bool = True,
+    portraits: cast_mod.CastPortraits | None = None,
+    use_portraits: bool = True,
 ) -> dict[str, Any]:
     started = time.time()
     root = Path(output_dir)
@@ -228,6 +230,17 @@ def run_episode(
     # Consecutive shots in one location are continued from the previous shot's
     # last frame, so the cut between them is physical rather than two guesses
     # at the same room. Off for a vendor that cannot take a first frame.
+    # Words describe a type, not a person, so a text-only shot casts a new face
+    # every time. A portrait sent with every appearance is what makes shot 9
+    # the same person as shot 1.
+    casting = (
+        portraits
+        if portraits is not None and use_portraits
+        and getattr(vendor, "accepts_reference_images", False)
+        else None
+    )
+    style_name = bible.style_name
+
     chain_links = (
         chain.plan(shots)
         if chaining == "auto" and getattr(vendor, "accepts_first_frame", False)
@@ -283,12 +296,28 @@ def run_episode(
                 )
                 if frame:
                     shot["first_frame"] = str(frame)
+            shot.pop("reference_images", None)
+            if casting is not None:
+                faces = casting.for_shot(shot.get("character_ids") or [])
+                if faces:
+                    shot["reference_images"] = [str(path) for path in faces]
+
             attempts[shot_id] += 1
             attempt = attempts[shot_id]
             prompt = prompts[shot_id]
             target = clips_dir / f"shot-{int(shot_id):02d}-take-{attempt:02d}.mp4"
             clip = vendor.generate(shot, prompt, attempt, target)
             current[shot_id] = clip
+            # A shot with one person in it can define that person's face. A shot
+            # with two cannot — there would be no way to say which face was
+            # whose — so those are never adopted from.
+            solo = list(shot.get("character_ids") or [])
+            if casting is not None and len(solo) == 1:
+                casting.adopt_from_clip(
+                    solo[0], clip.path, style=style_name,
+                    from_shot=f"ep{episode_no}-shot{shot_id}", workdir=work_dir,
+                )
+
             ledger.record(
                 target,
                 shot_id=shot_id, attempt=attempt, prompt=prompt, provider=vendor.name,
@@ -308,6 +337,7 @@ def run_episode(
                         source_id if shot.get("first_frame") and not clip.chain_dropped else None
                     ),
                     "chain_dropped": clip.chain_dropped,
+                    "references_dropped": clip.references_dropped,
                 }
             )
 
@@ -429,6 +459,21 @@ def run_episode(
             for event in generation_events
             if event.get("chain_dropped")
         ],
+        "dropped_portraits": [
+            {"shot_id": event["shot_id"], "reason": event["references_dropped"]}
+            for event in generation_events
+            if event.get("references_dropped")
+        ],
+        "cast_portraits": (
+            {
+                cid: {
+                    "file": entry["file"], "source": entry["source"],
+                    "from_shot": entry.get("from_shot", ""),
+                }
+                for cid, entry in casting.data["portraits"].items()
+            }
+            if casting is not None else {}
+        ),
         "narrated_shots": narrated,
         "auditor": getattr(auditor, "name", "rule-triage"),
         "evidence_source": getattr(auditor, "last_evidence", RULE_TRIAGE),
@@ -464,6 +509,7 @@ def run_episode(
             # What this run did not have to buy again, and what that was worth.
             "reused_shot_ids": sorted(reused, key=int),
             "reused_saving_cny": round(saved_cny, 2),
+            "portraits_used": bool(casting),
             "whole_film_rerun": False,
             "runtime_sec": built["runtime_sec"],
             "subtitles_burned": built["subtitles_burned"],

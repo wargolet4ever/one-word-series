@@ -1,0 +1,315 @@
+{
+  "report_version": "series-drift-1",
+  "generated_at": "2026-09-19T06:38:16+00:00",
+  "series_title": "《rust》",
+  "seed_word": "rust",
+  "style": "16mm",
+  "episodes": [
+    1,
+    2
+  ],
+  "thresholds": {
+    "same_place_max": 0.03,
+    "different_place_min": 0.09,
+    "calibration": "docs/drift-calibration.md"
+  },
+  "references": [
+    {
+      "kind": "character",
+      "id": "C1",
+      "name": "Wen",
+      "from_episode": 1,
+      "from_shot": "1",
+      "rebased": 0
+    },
+    {
+      "kind": "character",
+      "id": "C2",
+      "name": "Lin",
+      "from_episode": 1,
+      "from_shot": "3",
+      "rebased": 0
+    },
+    {
+      "kind": "location",
+      "id": "L1",
+      "name": "Stairwell C",
+      "from_episode": 1,
+      "from_shot": "1",
+      "rebased": 0
+    },
+    {
+      "kind": "location",
+      "id": "L2",
+      "name": "Unit 704",
+      "from_episode": 1,
+      "from_shot": "3",
+      "rebased": 0
+    }
+  ],
+  "model_looked": false,
+  "findings": [
+    {
+      "episode": 1,
+      "shot_id": "1",
+      "kind": "location",
+      "id": "L1",
+      "name": "Stairwell C",
+      "verdict": "REFERENCE SET",
+      "evidence_source": "NO REFERENCE YET",
+      "distance": null,
+      "differences": [],
+      "note": "first appearance — adopted as the reference for Stairwell C"
+    },
+    {
+      "episode": 1,
+      "shot_id": "1",
+      "kind": "character",
+      "id": "C1",
+      "name": "Wen",
+      "verdict": "REFERENCE SET",
+      "evidence_source": "NO REFERENCE YET",
+      "distance": null,
+      "differences": [],
+      "note": "first appearance — adopted as the reference for Wen"
+    },
+    {
+      "episode": 1,
+      "shot_id": "2",
+      "kind": "location",
+      "id": "L1",
+      "name": "Stairwell C",
+      "verdict": "CONSISTENT",
+      "evidence_source": "REFERENCE PIXEL SCREEN",
+      "distance": {
+        "colour": 0.0116,
+        "structure": 0.0078,
+        "composite": 0.0103
+      },
+      "differences": [],
+      "reference_episode": 1,
+      "reference_shot": "1"
+    },
+    {
+      "episode": 1,
+      "shot_id": "2",
+      "kind": "character",
+      "id": "C1",
+      "name": "Wen",
+      "verdict": "NOT CHECKED",
+      "evidence_source": "NOT CHECKED",
+      "distance": null,
+      "differences": [],
+      "reference_episode": 1,
+      "reference_shot": "1"
+    },
+    {
+      "episode": 1,
+      "shot_id": "3",
+      "kind": "location",
+      "id": "L2",
+      "name": "Unit 704",
+      "verdict": "REFERENCE SET",
+      "evidence_source": "NO REFERENCE YET",
+      "distance": null,
+      "differences": [],
+      "note": "first appearance — adopted as the reference for Unit 704"
+    },
+    {
+      "episode": 1,
+      "shot_id": "3",
+      "kind": "character",
+      "id": "C1",
+      "name": "Wen",
+      "verdict": "NOT CHECKED",
+      "evidence_source": "NOT CHECKED",
+      "distance": null,
+      "differences": [],
+      "reference_episode": 1,
+      "reference_shot": "1"
+    },
+    {
+      "episode": 1,
+      "shot_id": "3",
+      "kind": "character",
+      "id": "C2",
+      "name": "Lin",
+      "verdict": "REFERENCE SET",
+      "evidence_source": "NO REFERENCE YET",
+      "distance": null,
+      "differences": [],
+      "note": "first appearance — adopted as the reference for Lin"
+    },
+    {
+      "episode": 1,
+      "shot_id": "4",
+      "kind": "location",
+      "id": "L2",
+      "name": "Unit 704",
+      "verdict": "DRIFTED",
+      "evidence_source": "REFERENCE PIXEL SCREEN",
+      "distance": {
+        "colour": 0.1682,
+        "structure": 0.0066,
+        "composite": 0.1116
+      },
+      "differences": [],
+      "reference_episode": 1,
+      "reference_shot": "3"
+    },
+    {
+      "episode": 1,
+      "shot_id": "4",
+      "kind": "character",
+      "id": "C1",
+      "name": "Wen",
+      "verdict": "NOT CHECKED",
+      "evidence_source": "NOT CHECKED",
+      "distance": null,
+      "differences": [],
+      "reference_episode": 1,
+      "reference_shot": "1"
+    },
+    {
+      "episode": 2,
+      "shot_id": "1",
+      "kind": "location",
+      "id": "L1",
+      "name": "Stairwell C",
+      "verdict": "REVIEW",
+      "evidence_source": "REFERENCE PIXEL SCREEN",
+      "distance": {
+        "colour": 0.1031,
+        "structure": 0.013,
+        "composite": 0.0716
+      },
+      "differences": [],
+      "reference_episode": 1,
+      "reference_shot": "1"
+    },
+    {
+      "episode": 2,
+      "shot_id": "1",
+      "kind": "character",
+      "id": "C1",
+      "name": "Wen",
+      "verdict": "NOT CHECKED",
+      "evidence_source": "NOT CHECKED",
+      "distance": null,
+      "differences": [],
+      "reference_episode": 1,
+      "reference_shot": "1"
+    },
+    {
+      "episode": 2,
+      "shot_id": "2",
+      "kind": "location",
+      "id": "L1",
+      "name": "Stairwell C",
+      "verdict": "REVIEW",
+      "evidence_source": "REFERENCE PIXEL SCREEN",
+      "distance": {
+        "colour": 0.1091,
+        "structure": 0.013,
+        "composite": 0.0754
+      },
+      "differences": [],
+      "reference_episode": 1,
+      "reference_shot": "1"
+    },
+    {
+      "episode": 2,
+      "shot_id": "2",
+      "kind": "character",
+      "id": "C1",
+      "name": "Wen",
+      "verdict": "NOT CHECKED",
+      "evidence_source": "NOT CHECKED",
+      "distance": null,
+      "differences": [],
+      "reference_episode": 1,
+      "reference_shot": "1"
+    },
+    {
+      "episode": 2,
+      "shot_id": "3",
+      "kind": "location",
+      "id": "L2",
+      "name": "Unit 704",
+      "verdict": "DRIFTED",
+      "evidence_source": "REFERENCE PIXEL SCREEN",
+      "distance": {
+        "colour": 0.1693,
+        "structure": 0.0061,
+        "composite": 0.1122
+      },
+      "differences": [],
+      "reference_episode": 1,
+      "reference_shot": "3"
+    },
+    {
+      "episode": 2,
+      "shot_id": "3",
+      "kind": "character",
+      "id": "C1",
+      "name": "Wen",
+      "verdict": "NOT CHECKED",
+      "evidence_source": "NOT CHECKED",
+      "distance": null,
+      "differences": [],
+      "reference_episode": 1,
+      "reference_shot": "1"
+    },
+    {
+      "episode": 2,
+      "shot_id": "3",
+      "kind": "character",
+      "id": "C2",
+      "name": "Lin",
+      "verdict": "NOT CHECKED",
+      "evidence_source": "NOT CHECKED",
+      "distance": null,
+      "differences": [],
+      "reference_episode": 1,
+      "reference_shot": "3"
+    },
+    {
+      "episode": 2,
+      "shot_id": "4",
+      "kind": "location",
+      "id": "L2",
+      "name": "Unit 704",
+      "verdict": "DRIFTED",
+      "evidence_source": "REFERENCE PIXEL SCREEN",
+      "distance": {
+        "colour": 0.1861,
+        "structure": 0.0071,
+        "composite": 0.1234
+      },
+      "differences": [],
+      "reference_episode": 1,
+      "reference_shot": "3"
+    },
+    {
+      "episode": 2,
+      "shot_id": "4",
+      "kind": "character",
+      "id": "C1",
+      "name": "Wen",
+      "verdict": "NOT CHECKED",
+      "evidence_source": "NOT CHECKED",
+      "distance": null,
+      "differences": [],
+      "reference_episode": 1,
+      "reference_shot": "1"
+    }
+  ],
+  "summary": {
+    "checked": 18,
+    "drifted": 3,
+    "review": 2,
+    "not_checked": 8,
+    "status": "DRIFT FOUND",
+    "storyboard_episodes": []
+  }
+}

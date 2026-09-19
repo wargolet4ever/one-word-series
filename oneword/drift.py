@@ -33,6 +33,7 @@ from typing import Any
 from . import llm, metrics
 from .audit import FRAME_POSITIONS, _chat_vision, _data_url, extract_frames
 from .bible import SeriesBible
+from .cast import CastPortraits
 from .registry import ReferenceRegistry
 
 DRIFT_REPORT_VERSION = "series-drift-1"
@@ -44,7 +45,37 @@ DRIFT_REPORT_VERSION = "series-drift-1"
 SAME_PLACE_MAX = 0.03
 DIFFERENT_PLACE_MIN = 0.09
 
+# How a shot was made changes what "the same room" looks like, by roughly an
+# order of magnitude.  A shot continued from the previous shot's last frame
+# starts from that frame; a shot generated from text is an independent guess at
+# the same room.  Measuring both against one threshold is one ruler held against
+# two populations, so the band is chosen by population — and a band nobody has
+# measured yet says so instead of borrowing authority from the one that was.
+BANDS: dict[str, dict[str, Any]] = {
+    "unchained": {
+        "consistent_max": SAME_PLACE_MAX,
+        "drifted_min": DIFFERENT_PLACE_MIN,
+        "measured_on": "synthetic harness, 6 rooms x 8 shots (docs/drift-calibration.md)",
+    },
+    "chained": {
+        "consistent_max": SAME_PLACE_MAX,
+        "drifted_min": DIFFERENT_PLACE_MIN,
+        # Deliberately the same numbers, deliberately marked unmeasured: real
+        # chained shots land near 0.01, so this band is almost certainly far too
+        # loose and will hide drift in exactly the shots that should be tightest.
+        # Fix it with measurement, not with a guess:
+        #   python scripts/calibrate_drift.py --series out/<slug>
+        "measured_on": None,
+    },
+}
+
 SCREENABLE_KINDS = ("location",)
+
+# How the final take of a shot was actually made.
+CHAINED = "chained"
+CHAIN_REFUSED = "chain refused"
+UNCHAINED = "not chained"
+CHAIN_UNKNOWN = "unknown"
 
 PIXEL_SCREEN = "REFERENCE PIXEL SCREEN"
 VISUAL_AUDIT = "REFERENCE VISUAL AUDIT"
@@ -70,12 +101,63 @@ class DriftError(RuntimeError):
     pass
 
 
-def verdict_for(composite: float) -> str:
-    if composite <= SAME_PLACE_MAX:
+def population_for(chain_state: str) -> str:
+    """Which band applies. A refused chain produced a text-only shot."""
+
+    return "chained" if chain_state == CHAINED else "unchained"
+
+
+def verdict_for(composite: float, population: str = "unchained") -> str:
+    band = BANDS.get(population, BANDS["unchained"])
+    if composite <= band["consistent_max"]:
         return CONSISTENT
-    if composite >= DIFFERENT_PLACE_MIN:
+    if composite >= band["drifted_min"]:
         return DRIFTED
     return REVIEW
+
+
+def chain_state_for(episode_report: dict[str, Any], shot_id: str) -> dict[str, str]:
+    """How the final take of this shot was made, from the episode's own record.
+
+    The *final* take: a repaired shot is the one in the film and the one the
+    drift pass measured, so an earlier attempt's chain does not describe it.
+    """
+
+    events = [
+        event for event in episode_report.get("generation_events", [])
+        if str(event["shot_id"]) == str(shot_id)
+    ]
+    links = episode_report.get("chain_links") or {}
+    if not events:
+        return {"state": CHAIN_UNKNOWN, "detail": ""}
+
+    last = events[-1]
+    if last.get("chain_dropped"):
+        return {"state": CHAIN_REFUSED, "detail": str(last["chain_dropped"])[:300]}
+    if last.get("continues_shot"):
+        return {"state": CHAINED, "detail": f"from shot {last['continues_shot']}"}
+    if not links:
+        return {"state": UNCHAINED, "detail": "chaining off for this run"}
+    if str(shot_id) not in {str(key) for key in links}:
+        return {"state": UNCHAINED, "detail": "cuts to another location"}
+    return {"state": UNCHAINED, "detail": "first frame not available"}
+
+
+def portraits_dropped_for(episode_report: dict[str, Any], shot_id: str) -> str:
+    """Why this shot went out without the cast portraits, if it did.
+
+    Without this, a character who drifted in exactly the shot whose portrait the
+    platform refused looks like a failure of the mechanism rather than a shot
+    the mechanism never got to touch.
+    """
+
+    events = [
+        event for event in episode_report.get("generation_events", [])
+        if str(event["shot_id"]) == str(shot_id)
+    ]
+    if not events:
+        return ""
+    return str(events[-1].get("references_dropped") or "")[:300]
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -210,6 +292,12 @@ def audit_series(
     findings: list[dict[str, Any]] = []
     model_used = False
 
+    # A character's locked portrait is a better reference than a frame from the
+    # shot they happened to appear in first: it is the picture that was actually
+    # sent to every later shot, so comparing against it asks the exact question
+    # that matters — did sending it work?
+    portraits = CastPortraits(root)
+
     for report in reports:
         data = report["data"]
         episode = int(data["episode"])
@@ -224,6 +312,9 @@ def audit_series(
             if not frames:
                 continue
             prints = [metrics.fingerprint(frame) for frame in frames]
+            chain = chain_state_for(data, shot["shot_id"])
+            population = population_for(chain["state"])
+            portrait_refused = portraits_dropped_for(data, shot["shot_id"])
 
             for kind, subject_id, display in _subjects_in_shot(shot, bible):
                 entry = registry.get(kind, subject_id)
@@ -247,19 +338,29 @@ def audit_series(
 
                 if kind in SCREENABLE_KINDS:
                     best = metrics.best_distance(prints, entry["fingerprint"])
-                    verdict = verdict_for(best["composite"])
+                    verdict = verdict_for(best["composite"], population)
                     evidence = PIXEL_SCREEN
+                    channel = metrics.tripped_by(best)
                 else:
                     best = None
                     verdict = NOT_CHECKED
                     evidence = NOT_CHECKED
+                    channel = None
 
                 differences: list[dict[str, Any]] = []
+                reference_kind = "first appearance"
+                portrait = portraits.get(subject_id) if kind == "character" else None
+                if portrait is not None:
+                    reference_kind = f"locked portrait ({portrait.source})"
+
                 # Escalate to a model only where it can change the answer, and
                 # only where a model actually produced the pixels.
                 worth_looking = verdict in (REVIEW, DRIFTED) or kind not in SCREENABLE_KINDS
                 if use_model and generative and worth_looking:
-                    reference_frame = registry.frame_path(kind, subject_id)
+                    reference_frame = (
+                        portrait.path if portrait is not None
+                        else registry.frame_path(kind, subject_id)
+                    )
                     if reference_frame:
                         result = visual_compare(
                             reference_frame, frames[len(frames) // 2],
@@ -278,6 +379,12 @@ def audit_series(
                         "kind": kind, "id": subject_id, "name": display,
                         "verdict": verdict, "evidence_source": evidence,
                         "distance": best, "differences": differences,
+                        "tripped_by": channel,
+                        "chain_state": chain["state"],
+                        "chain_detail": chain["detail"],
+                        "band": population,
+                        "reference_kind": reference_kind,
+                        "portrait_refused": portrait_refused if kind == "character" else "",
                         "reference_episode": entry["episode"],
                         "reference_shot": entry["shot_id"],
                     }
@@ -301,6 +408,7 @@ def audit_series(
             "different_place_min": DIFFERENT_PLACE_MIN,
             "calibration": "docs/drift-calibration.md",
         },
+        "bands": BANDS,
         "references": [
             {
                 "kind": kind, "id": subject_id,
@@ -329,6 +437,15 @@ def audit_series(
                 else "CONSISTENT"
             ),
             "storyboard_episodes": [int(d["episode"]) for d in non_generative],
+            # Named here rather than buried in the bands table: a verdict reached
+            # with a borrowed threshold is a weaker claim than one reached with a
+            # measured one, and the summary is where that belongs.
+            "unmeasured_bands": sorted(
+                {
+                    f["band"] for f in findings
+                    if f.get("band") and BANDS.get(f["band"], {}).get("measured_on") is None
+                }
+            ),
         },
     }
     validate_drift_report(result)
@@ -350,6 +467,10 @@ def validate_drift_report(report: dict[str, Any]) -> dict[str, Any]:
             raise DriftError("only a visual audit may report specific differences")
         if finding["kind"] not in SCREENABLE_KINDS and finding["distance"] is not None:
             raise DriftError(f"{finding['kind']} must not carry a whole-frame screen distance")
+        if finding["distance"] is not None and not finding.get("tripped_by"):
+            # A number with no account of which channel produced it invites the
+            # reader to assume both did.
+            raise DriftError("a screened finding must say which channel decided it")
     if report["summary"]["status"] == "CONSISTENT" and report["summary"]["not_checked"]:
         # Otherwise a series whose characters were never examined reads as clean.
         raise DriftError("cannot summarise as CONSISTENT while subjects remain unchecked")
@@ -373,6 +494,13 @@ def render_html(report: dict[str, Any]) -> str:
             f"colour {distance['colour']:.3f} · structure {distance['structure']:.3f}"
             if distance else ""
         )
+        if distance and finding.get("tripped_by"):
+            parts += f"<br>decided by {esc(finding['tripped_by'])}"
+        made = esc(finding.get("chain_state") or "—")
+        if finding.get("chain_detail"):
+            made += f"<br><small>{esc(finding['chain_detail'][:60])}</small>"
+        if finding.get("portrait_refused"):
+            made += "<br><small><b>portrait refused</b></small>"
         diffs = "<br>".join(
             f"<b>{esc(d['fact'])}</b> — {esc(d['evidence'])}" for d in finding["differences"]
         ) or "—"
@@ -382,16 +510,23 @@ def render_html(report: dict[str, Any]) -> str:
             f"<td>{esc(finding['name'])}<br><small>{esc(finding['kind'])}</small></td>"
             f"<td style='color:{colour.get(finding['verdict'], '#333')};font-weight:600'>"
             f"{esc(finding['verdict'])}</td>"
-            f"<td>{esc(detail)}<br><small>{esc(parts)}</small></td>"
+            f"<td>{esc(detail)}<br><small>{parts}</small></td>"
+            f"<td><small>{made}</small></td>"
             f"<td><small>{esc(finding['evidence_source'])}</small></td>"
             f"<td>{diffs}</td>"
             "</tr>"
         )
 
+    portrait_for = {
+        f["id"]: f["reference_kind"] for f in report["findings"]
+        if f.get("reference_kind", "").startswith("locked portrait")
+    }
     references = "".join(
         f"<li><b>{esc(r['name'])}</b> ({esc(r['kind'])}) — locked from episode "
         f"{esc(r['from_episode'])}, shot {esc(r['from_shot'])}"
         + (f" · re-based {esc(r['rebased'])}×" if r["rebased"] else "")
+        + (f" · compared against their {esc(portrait_for[r['id']])}"
+           if r["id"] in portrait_for else "")
         + "</li>"
         for r in report["references"]
     )
@@ -400,7 +535,9 @@ def render_html(report: dict[str, Any]) -> str:
     if not report["model_looked"]:
         caveats.append(
             "No multimodal model examined these frames. Locations carry a pixel screen only, "
-            "and characters were not checked at all."
+            "and characters were not checked at all — which is also the only thing that can "
+            "answer whether the cast portraits held. Set LLM_API_KEY and LLM_MODEL to a "
+            "vision-capable model and run this again."
         )
     if report["summary"]["storyboard_episodes"]:
         caveats.append(
@@ -408,6 +545,22 @@ def render_html(report: dict[str, Any]) -> str:
             + ", ".join(str(e) for e in report["summary"]["storyboard_episodes"])
             + " were shot with the offline storyboard vendor. Those pixels are stand-ins, "
             "so agreement between them says nothing about whether a real video model drifts."
+        )
+
+    screened = [f for f in report["findings"] if f.get("tripped_by")]
+    if screened and all(f["tripped_by"] == "colour" for f in screened):
+        caveats.append(
+            "Every verdict here was decided by colour; structure never moved. That is the "
+            "fingerprint working as designed — the rooms really are the same rooms — but it "
+            "means the composite is a one-channel measurement on this series, not the blend "
+            "its weights imply."
+        )
+    if report["summary"].get("unmeasured_bands"):
+        caveats.append(
+            "Shots judged against an unmeasured band: "
+            + ", ".join(report["summary"]["unmeasured_bands"])
+            + ". Those thresholds were measured on a different population and are being "
+            "borrowed. Measure them: python scripts/calibrate_drift.py --series <this dir>"
         )
     summary = report["summary"]
 
@@ -439,7 +592,7 @@ def render_html(report: dict[str, Any]) -> str:
 <p>Every appearance below is compared against these, not against the previous episode.</p>
 <ul>{references}</ul>
 <h2>Every appearance</h2>
-<table><thead><tr><th>Ep</th><th>Shot</th><th>Subject</th><th>Verdict</th><th>Distance</th><th>Evidence</th><th>Differences</th></tr></thead>
+<table><thead><tr><th>Ep</th><th>Shot</th><th>Subject</th><th>Verdict</th><th>Distance</th><th>How it was shot</th><th>Evidence</th><th>Differences</th></tr></thead>
 <tbody>{"".join(rows)}</tbody></table>
 <p><small>Thresholds: consistent ≤ {esc(report['thresholds']['same_place_max'])},
 drifted ≥ {esc(report['thresholds']['different_place_min'])} —

@@ -170,6 +170,7 @@ class AnimaticVendor:
     generative = False
     speaks = False
     accepts_first_frame = False
+    accepts_reference_images = False
 
     def __init__(self, *, width: int = 1280, height: int = 720, fps: int = 24) -> None:
         self.ffmpeg = ffmpeg_exe()
@@ -355,6 +356,9 @@ class SeedanceVendor:
     # shot's first frame, which is what makes a cut continuous rather than a
     # second independent guess at the same room.
     accepts_first_frame = True
+    # Character portraits, sent with every shot that person appears in. Words
+    # describe a type; only a picture fixes a face.
+    accepts_reference_images = True
 
     def __init__(
         self,
@@ -413,7 +417,12 @@ class SeedanceVendor:
 
     # ---- the three stages ------------------------------------------
 
-    def submit(self, prompt: str, first_frame: Path | None = None) -> str:
+    def submit(
+        self,
+        prompt: str,
+        first_frame: Path | None = None,
+        reference_images: list[Path] | None = None,
+    ) -> str:
         if self.spent_cny + self.unit_cost > self.config.budget_cny:
             raise BudgetExceeded(
                 f"budget cap ¥{self.config.budget_cny:.2f} reached "
@@ -434,6 +443,14 @@ class SeedanceVendor:
                     "type": "image_url",
                     "image_url": {"url": chain.data_url(Path(first_frame))},
                     "role": "first_frame",
+                }
+            )
+        for portrait in reference_images or []:
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": chain.data_url(Path(portrait))},
+                    "role": "reference_image",
                 }
             )
         payload = {"model": self.config.model, "content": content}
@@ -511,26 +528,48 @@ class SeedanceVendor:
             status="submitting" + (" (continuing)" if first_frame else ""),
             elapsed=0.0,
         )
+        portraits = [Path(p) for p in (shot.get("reference_images") or [])]
+        frame = Path(first_frame) if first_frame else None
+
+        # Input images are moderated, and a photorealistic face is exactly what
+        # gets refused. Both the first frame and the portraits are improvements,
+        # not requirements, so a refusal steps down one rung rather than ending
+        # a run that has already been paid for. A refused submit creates no
+        # task, so each attempt on this ladder costs nothing.
+        ladder = []
+        if frame or portraits:
+            ladder.append((frame, portraits))
+        if frame and portraits:
+            ladder.append((None, portraits))
+        ladder.append((None, []))
+
         chain_dropped: str | None = None
-        try:
-            task_id = self.submit(prompt, Path(first_frame) if first_frame else None)
-        except ArkHTTPError as exc:
-            if not (first_frame and refused_the_input_image(exc)):
-                raise
-            # Continuing from the last frame is an improvement, not a
-            # requirement. Losing a paid episode because an improvement was
-            # refused is the wrong trade, so the shot is made from text and the
-            # report says the chain was dropped. A refused submit creates no
-            # task, so nothing was spent on the attempt.
-            # 300, not 200: the platform's reason runs past 200 characters and
-            # a note that stops mid-sentence is not a reason.
-            chain_dropped = str(exc).split("\n")[0][:300]
-            first_frame = None
-            self._progress(
-                shot_id=shot_id, status="first frame refused — shooting from text",
-                elapsed=time.time() - started,
-            )
-            task_id = self.submit(prompt, None)
+        references_dropped: str | None = None
+        task_id = None
+        for index, (try_frame, try_portraits) in enumerate(ladder):
+            try:
+                task_id = self.submit(prompt, try_frame, try_portraits)
+            except ArkHTTPError as exc:
+                if not refused_the_input_image(exc) or index == len(ladder) - 1:
+                    raise
+                # 300, not 200: the platform's reason runs past 200 characters
+                # and a note that stops mid-sentence is not a reason.
+                reason = str(exc).split("\n")[0][:300]
+                if try_frame is not None:
+                    chain_dropped = reason
+                if try_portraits and not ladder[index + 1][1]:
+                    references_dropped = reason
+                self._progress(
+                    shot_id=shot_id,
+                    status="input image refused — retrying with less",
+                    elapsed=time.time() - started,
+                )
+                continue
+            if try_frame is None and frame is not None and chain_dropped is None:
+                chain_dropped = "first frame was not used"
+            if not try_portraits and portraits and references_dropped is None:
+                references_dropped = "portraits were not used"
+            break
         body = self.poll(task_id, shot_id=shot_id)
         content = body.get("content") or {}
         url = content.get("video_url") or content.get("url")
@@ -562,6 +601,7 @@ class SeedanceVendor:
             path=target,
             prompt=prompt,
             chain_dropped=chain_dropped,
+            references_dropped=references_dropped,
         )
 
 

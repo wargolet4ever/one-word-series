@@ -10,7 +10,35 @@ oneword rust --episodes 2
 ```
 
 这条命令现在就能跑，不需要任何 key，不花一分钱，产出两个带字幕的成片 ——
-机器上有 TTS 引擎的话，还带语音。
+机器上有 TTS 引擎的话，还带语音。它会先问你要哪种风格，然后告诉你一件要紧事：
+
+```
+· no story was written for your word — this is the built-in placeholder.
+  "rust" appears only in a few action lines. The cast, the locations,
+  the beats and every line of dialogue are fixed strings shipped with this
+  tool, and they are the same for every word anyone types.
+  Set LLM_API_KEY / LLM_MODEL for a series actually written from "rust".
+```
+
+这句话要按字面理解：**没有写作模型时，你输入的那个词基本被忽略了。**
+人物、场景、节拍、每一句台词，都是仓库里写死的字符串，谁输什么词都一样；
+你的词只出现在少数几行动作描述里。你拿到的是整套机器真的跑通了 ——
+真的 bible、真的锁定 prompt、真的连戏、真的一条成片 —— 但故事是演示故事。
+
+免费看一遍值得，花钱拍它不值得。所以付费 vendor 在动手之前会先停下来问你：
+
+```
+  ────────────────────────────────────────────────────────────────
+  You are about to pay seedance-ark for the placeholder story.
+
+  Nothing here was written from "rust". You would be buying
+  the demo — the same two characters, the same two rooms and the
+  same dialogue everyone else gets, rendered in your chosen look.
+
+  Cost if you continue: about ¥18.60 (10 clips at ¥1.86).
+  ────────────────────────────────────────────────────────────────
+  type yes to shoot the placeholder anyway:
+```
 
 ---
 
@@ -175,6 +203,53 @@ oneword rust --chain off                # 每镜独立生成
 
 被拒的提交不会建任务，所以那次尝试不花钱。
 
+### 让同一个人一直是同一个人
+
+bible 锁的是人物的**描述**，而描述指的是一类人，不是某一个人。
+「三十多岁，精瘦，左眉一道竖疤，橄榄色工装外套左袖口撕裂」——
+这能保证袖口不会自己补好，但挡不住文生视频每一镜都重新挑一张符合描述的脸：
+第 2 镜戴眼镜，第 5 镜没戴，第 2 集换了下颌线。
+这件事靠改 prompt 是修不好的，因为文字不是脸。
+
+身份需要一张图：
+
+```bash
+oneword rust --vendor seedance                      # 一边拍一边认脸
+oneword rust --cast-image C1=wen.jpg --vendor seedance
+oneword rust --no-cast-images                       # 每一镜自己挑脸
+oneword rust --reset-cast                           # 忘掉旧的，这次重新认
+```
+
+参考图会跟着这个人物出现的**每一镜**一起送出去。来源两种：你给，或者**自动采用**
+—— 某个人物第一次**单独**出现的那一镜，就成为他的定妆照，然后被冻结。
+和场景的基准帧是同一笔交易，冻结的理由也一样：每一集都重新认一次脸，
+正是一部剧在每一步都看起来没问题的情况下悄悄换掉全部演员的方式。
+
+```
+  locked a face for Wen — every later shot is sent it
+```
+
+两个人同框的镜头永远不会被用来认脸 —— 没法说哪张脸是谁的。
+另外，`noir` 里拍的定妆照不是 `anime` 里的同一个人，所以改风格之后
+旧的参考图会被放到一边，而不是和新风格对着干：
+
+```
+· the locked portraits were shot in noir, not anime — setting them aside for this run.
+  Add --reset-cast to adopt new ones in this look, or --style to go back.
+```
+
+审核在这里更严：一张好的写实定妆照，恰恰就是最像真人照片的东西。
+提交会一级一级往下退 —— 首帧＋参考图，只留参考图，最后纯文本 ——
+并且报告里写明这一镜实际是在哪一级拍成的：
+
+```
+  note: shot 4 was shot without the cast portraits — the platform refused them,
+  so that face may differ
+```
+
+非写实风格（`anime`、`storybook`、`stopmotion`）被拒的概率低得多，
+这本身就是选择用这类风格拍一整部剧的一个实在理由。
+
 ### 音乐与环境声
 
 ```bash
@@ -195,6 +270,23 @@ ffmpeg 没有 sidechain 滤镜时退回固定音量，并明确告诉你用的�
 这两件事都不该藏在一个看起来像调音台的开关后面。
 
 ## 选择风格
+
+风格是整部剧锁死的东西，所以选它的时机是在第一镜之前 ——
+而不是十条片子都拍出来之后才发现没人选过这个 look。交互式运行会先问：
+
+```
+Pick a look. It is locked for the whole series.
+
+  1) 16mm         16mm film
+                  photographic, 16mm film stock with visible grain and gate weave
+  2) analog       Analog video
+  …
+  0) let the writing model choose (whatever it imagines, unlocked)
+
+  style [1]:
+```
+
+给了 `--style` 就不问。给 `--yes` 则什么都不问 —— 定时任务要的就是这个。
 
 ```bash
 oneword styles                              # 看有哪些
@@ -276,10 +368,56 @@ oneword drift out/rust          # 多集运行结束后也会自动跑一遍
 没配多模态模型时，人物漂移一律报 `NOT CHECKED`——**不报通过**——整部剧的状态
 写 `PARTIAL` 而不是 `CONSISTENT`。没人挣来的那个绿勾，比一个诚实的空白更糟。
 
+这也是唯一能告诉你「参考图到底起没起作用」的东西，所以它才值得配一个。
+当某个人物有锁定的定妆照时，漂移检查比对的是**定妆照本身**，而不是他第一次
+出现的那一镜的某一帧——那张图才是真正被送给后面每一镜的图，比对它问的才是
+那个该问的问题。另外，被平台拒过参考图的镜头会被标出来，所以那一镜里的脸不一致
+读起来是「这一镜机制根本没碰到」，而不是「机制失效了」。
+
 本地初筛是分诊，不是判决。它的阈值是量出来的不是拍出来的，而测量结果说两个
 分布是重叠的：大约 80% 的比较落进一个初筛拒绝独自决定的 review 区间，交给多模态
 比对——后者读的是写下来的事实（袖口有没有破、扶手是不是绿的），不是数像素。
 [`docs/drift-calibration.md`](docs/drift-calibration.md) 里有全部数字和复现命令。
+
+### 这一条到底为什么漂了
+
+距离只告诉你两帧差多远，不告诉你这一镜是**怎么拍的**——而后者早就写在盘上了：
+每一集的报告都记着这一镜有没有续接上一镜、首帧有没有被平台拒掉、参考图有没有
+送出去。把这两份文件 join 起来不花一分钱：
+
+```bash
+python scripts/explain_drift.py out/rust
+```
+
+```
+ep  shot  subject          verdict        comp    col    str  how it was shot
+ 1     2  Stairwell C      CONSISTENT    0.010  0.012  0.008  chained (from shot 1)
+ 2     3  Unit 704         DRIFTED       0.112  0.168  0.007  chain refused: InputImage…
+
+By how the shot was made
+  chained          n=1  0.010
+  chain refused    n=3  min 0.112 · p50 0.112 · max 0.123
+```
+
+这个形状比任何单独一行都重要。续接的镜头和纯文生的镜头是**两个总体**，差着
+大约一个数量级；拿同一个阈值去量两个总体，是拿一把尺子量两样东西。所以
+`oneword/drift.py` 里的阈值按总体分开存 —— 并且 `chained` 那一档明确标着
+`measured_on: None`：借一个数字可以，假装它是量出来的不行。报告会直接写明
+哪些判定是用借来的阈值做的。
+
+同一次运行还会报**每一行是被哪个通道决定的**。真实剧集素材里房间确实是同一个
+房间，所以结构通道理所当然几乎不动，颜色扛下了全部判定 —— 也就是说这个
+composite 实际上是个单通道测量，只是顶着双通道的名字。现在它会自己说出来，
+而不是让你默认它是两个通道一起算的。
+
+等你有素材了，就用自己的素材去量：
+
+```bash
+python scripts/calibrate_drift.py --series out/rust
+```
+
+它会按「后一镜是怎么拍的」把同场景配对拆开，打印可以直接粘贴的阈值。
+某个总体素材太少分不开时，它会直说，而不是硬吐一个数字出来。
 
 ### 不为同一条片子付两次钱
 
@@ -335,6 +473,9 @@ cp prices.example.json prices.json   # 或者长期放着
   表里没有的（模型，分辨率，时长）组合直接拒绝提交。
 * `VIDEO_BUDGET_CNY` 在**提交之前**抛 `BudgetExceeded`，不是事后才发现。
 * 单次运行只持有一个 vendor，报告校验会拒绝混供应商的记录。
+* 付费 vendor 不会在没被明确要求的情况下去拍那个演示故事。它会先打印
+  这一趟要花多少钱、拍出来的到底是什么，然后等你输入 `yes`。
+  退出码 10 表示你说了不 —— 什么都没生成，什么都没扣。
 
 ## 关于说实话的规矩
 
@@ -373,17 +514,29 @@ README 里的说法都是代码确实会做的事。这一节是更窄的一组�
   真正的原因在响应体里 —— 适配器现在会把它显示出来，而不是干巴巴一句
   `HTTP Error 404`。单镜生成要几分钟，所以现在会报进度而不是静默。
 
-其余部分 —— 漂移阈值、真实故障下的修复环 —— 靠测试和离线 vendor 覆盖，
+* **对真实素材跑过一次跨集漂移检查，并且推翻了这个仓库里写下的一个猜测。**
+  标定文档当初预测：锁定风格的剧集变化应该比合成靶场**小**。真实的两集变化
+  更**大** —— 六个同场景读数里有四个超过了靶场同场景的最差配对。同一次检查
+  还显示结构几乎不动、颜色扛下了全部判定。这两件事现在都会被报出来而不是
+  被默认，阈值也按总体拆开了。六个读数在
+  [`docs/drift-calibration.md`](docs/drift-calibration.md) 里。
+
+其余部分 —— 真实故障下的修复环、人物比对 —— 靠测试和离线 vendor 覆盖，
 那和「生产环境验证过」不是一回事。凡是这个区别重要的地方，文中都就地写明了。
 
 ## 还没做的
 
 1. **没有模型时的人物漂移。** 场景有本地初筛，人物必须有多模态 key，
-   否则如实留空不检查。
-2. **用真实素材重新标定阈值。** 现在的阈值标定在合成靶场上。拿
-   `scripts/calibrate_drift.py` 对着真实 Seedance 成片重跑一遍再改常数 ——
-   现在已经具备条件，但还没做。
+   否则如实留空不检查。到目前为止还没有哪次运行配过，也就是说这个仓库里
+   还没有任何东西真的看过一张脸。
+2. **按总体量出来的阈值。** `scripts/calibrate_drift.py --series` 现在能量
+   真实素材，并把续接/非续接的配对拆开，但 `chained` 那一档仍然沿用合成
+   靶场的数字，并明确标着 `measured_on: None`，等一次真实运行把它填上。
 3. **仓库里放一条演示片。** 付费成片已经有了，还没有一条提交进来。
+4. **人物参考图还没在真实 API 上跑过。** 请求结构、降级阶梯、冻结规则
+   都有测试覆盖，走的是 fake opener。方舟的审核会不会接受一张**它自己生成的**
+   画面里截出来的脸，这件事还没花钱验证过。退回纯文本那条路大概率会被触发 ——
+   它本来就是为这件事写的。
 
 ## Windows 上的几件事
 
@@ -401,5 +554,5 @@ README 里的说法都是代码确实会做的事。这一节是更窄的一组�
 python -m unittest discover -s tests -t .
 ```
 
-127 个测试，全部不碰付费 API。方舟适配器走 fake opener，
+212 个测试，全部不碰付费 API。方舟适配器走 fake opener，
 所以请求结构、提交不重试、预算上限这三件事都被断言了，且不花钱。

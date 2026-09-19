@@ -1,0 +1,11 @@
+{
+  "ledger_version": "clip-ledger-1",
+  "shot_id": "4",
+  "attempt": 1,
+  "prompt_fingerprint": "6737d6d025d7b5f1",
+  "provider": "seedance-ark",
+  "cost_cny": 1.86,
+  "chain_dropped": "Ark returned HTTP 400 for model 'doubao-seedance-2-0-mini-260615': InputImageSensitiveContentDetected.PrivacyInformation · The request failed because the input image 'content[1]' may contain real person. Request id: 0217897990217982cb8822a4864991e162f30172d7ae7b6e4d638",
+  "continues_shot": null,
+  "file": "shot-04-take-01.mp4"
+}

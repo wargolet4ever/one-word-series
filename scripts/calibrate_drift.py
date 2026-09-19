@@ -20,10 +20,26 @@ honestly live. Run:
 
 It prints the distributions and the thresholds they imply. If they overlap, it
 says so rather than picking a number that hides the overlap.
+
+## Real footage
+
+The harness is a stand-in. Once there are finished episodes on disk, measure
+those instead — the same comparison, against the thing the thresholds are
+actually applied to:
+
+    python scripts/calibrate_drift.py --series out/rust [out/other …]
+
+Real mode splits same-place pairs by **how the later shot was made**, because a
+shot continued from the previous shot's last frame and a shot generated from
+text are not one population. It reproduces production exactly: the earlier
+shot's first frame is the reference, the later shot's three sampled frames are
+the candidates, and the score is the best of the three — `metrics.best_distance`,
+the same call `drift.audit_series` makes.
 """
 
 from __future__ import annotations
 
+import json
 import random
 import statistics
 import sys
@@ -131,7 +147,151 @@ def describe(label: str, values: list[float]) -> None:
     )
 
 
+def bands_from(same: list[float], different: list[float]) -> tuple[float, float]:
+    """The same cost-asymmetry rule the synthetic run uses.
+
+    The pass bar sits under the closest genuinely-different pair; the flag bar
+    sits over the furthest genuinely-same pair. Everything between is handed to
+    the multimodal audit instead of being guessed at.
+    """
+
+    return min(different) * 0.95, max(same) * 1.02
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Real footage
+# ──────────────────────────────────────────────────────────────────────
+
+
+def _shots_in(series: Path) -> list[dict]:
+    """Every shot of every episode, fingerprinted, with how it was made."""
+
+    from oneword import drift
+    from oneword.audit import FRAME_POSITIONS, extract_frames
+
+    workdir = series / "references" / ".calibration"
+    found: list[dict] = []
+    for report_path in sorted(series.glob("episode-*/episode-report.json")):
+        data = json.loads(report_path.read_text(encoding="utf-8"))
+        episode = int(data["episode"])
+        for shot in data["shots"]:
+            clip = report_path.parent / "clips" / shot["file"]
+            if not clip.is_file():
+                continue
+            frames = extract_frames(clip, workdir, FRAME_POSITIONS)
+            if not frames:
+                continue
+            state = drift.chain_state_for(data, shot["shot_id"])
+            found.append(
+                {
+                    "series": series.name,
+                    "episode": episode,
+                    "shot_id": shot["shot_id"],
+                    "location": shot.get("location", ""),
+                    "chain_state": state["state"],
+                    "prints": [metrics.fingerprint(frame) for frame in frames],
+                }
+            )
+    return found
+
+
+def measure_series(dirs: list[Path]) -> int:
+    from oneword import drift
+
+    shots: list[dict] = []
+    for series in dirs:
+        if not (series / "bible.json").is_file():
+            print(f"{series} has no bible.json — is that a series directory?", file=sys.stderr)
+            return 2
+        found = _shots_in(series)
+        print(f"{series}: {len(found)} shots with clips on disk")
+        shots += found
+
+    if len(shots) < 2:
+        print("not enough shots to compare", file=sys.stderr)
+        return 2
+
+    buckets: dict[str, list[float]] = {}
+    for i, earlier in enumerate(shots):
+        for later in shots[i + 1:]:
+            if earlier["series"] != later["series"]:
+                continue
+            # Production compares a later appearance's three frames against the
+            # reference's first frame, and keeps the best. Same call here.
+            score = metrics.best_distance(later["prints"], earlier["prints"][0])["composite"]
+            if earlier["location"] != later["location"]:
+                buckets.setdefault("different place", []).append(score)
+            elif later["chain_state"] == drift.CHAINED:
+                buckets.setdefault("same place, chained", []).append(score)
+            else:
+                buckets.setdefault("same place, unchained", []).append(score)
+
+    print()
+    for label in ("same place, chained", "same place, unchained", "different place"):
+        if buckets.get(label):
+            describe(label, buckets[label])
+        else:
+            print(f"{label:<24} n=0     — nothing in this series to measure")
+
+    chained = buckets.get("same place, chained") or []
+    unchained = buckets.get("same place, unchained") or []
+    different = buckets.get("different place") or []
+
+    print()
+    if chained and unchained:
+        print(
+            f"Chained shots sit at p50 {statistics.median(chained):.4f}; unchained ones at "
+            f"p50 {statistics.median(unchained):.4f}"
+        )
+        if max(chained) < min(unchained):
+            print("and the two do not overlap at all. One threshold for both would be one")
+            print("ruler held against two populations.")
+        else:
+            print("but the two overlap, so the split buys less than it looks like it does.")
+
+    if not different:
+        print()
+        print("No different-place pairs: this series has one location, so there is no")
+        print("control group and no honest flag bar can be derived. Measure a series")
+        print("with at least two locations.")
+        return 0
+
+    print()
+    print("Bands this footage implies (paste into oneword/drift.py BANDS):")
+    for label, values in (("chained", chained), ("unchained", unchained)):
+        if not values:
+            print(f'    "{label}": nothing measured — leave measured_on: None')
+            continue
+        consistent_max, drifted_min = bands_from(values, different)
+        if consistent_max >= drifted_min:
+            # The bars crossing means the two distributions did NOT overlap:
+            # every same-place pair is closer than every different-place pair,
+            # so there is a clean gap and no need for a review band at all.
+            # One cut in the middle of that gap decides everything.
+            cut = (max(values) + min(different)) / 2
+            print(f'    "{label}": {{"consistent_max": {cut:.4f}, '
+                  f'"drifted_min": {cut:.4f}, '
+                  f'"measured_on": "{len(values)} pairs, cleanly separated"}},')
+            print(f"       ↑ the populations do not overlap here (same place tops out at "
+                  f"{max(values):.4f}, different place starts at {min(different):.4f}),")
+            print("         so one cut decides every pair and the review band is empty.")
+            print("         That is a small sample talking — treat it as provisional.")
+            continue
+        print(f'    "{label}": {{"consistent_max": {consistent_max:.3f}, '
+              f'"drifted_min": {drifted_min:.3f}, '
+              f'"measured_on": "{len(values)} pairs from real footage"}},')
+
+    print()
+    print("These are measurements of the footage you have, not a law. Rerun them when")
+    print("you have more episodes, and say in the docs what they were measured on.")
+    return 0
+
+
 def main() -> int:
+    argv = sys.argv[1:]
+    if argv and argv[0] == "--series":
+        return measure_series([Path(value) for value in argv[1:]] or [Path("out")])
+
     with TemporaryDirectory() as tmp:
         root = Path(tmp)
         prints: dict[int, list[dict]] = {}

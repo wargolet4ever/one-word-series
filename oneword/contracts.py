@@ -59,6 +59,9 @@ class GeneratedClip:
     # instead, so the report can say the cut may jump rather than implying a
     # continuity that was never achieved.
     chain_dropped: str | None = None
+    # Set when character portraits were refused and the shot was made without
+    # them, so the report does not imply an identity that was never enforced.
+    references_dropped: str | None = None
 
 
 @runtime_checkable

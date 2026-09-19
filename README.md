@@ -11,6 +11,34 @@ oneword rust --episodes 2
 
 That runs right now, with no API key and no spend, and hands you two finished
 `.mp4` files with subtitles — and speech too, if this machine has a TTS engine.
+It asks you which look you want, and then tells you something important:
+
+```
+· no story was written for your word — this is the built-in placeholder.
+  "rust" appears only in a few action lines. The cast, the locations,
+  the beats and every line of dialogue are fixed strings shipped with this
+  tool, and they are the same for every word anyone types.
+  Set LLM_API_KEY / LLM_MODEL for a series actually written from "rust".
+```
+
+Read that literally. Without a writing model, **your word is nearly ignored**.
+What you get is the machinery working end to end — a real bible, real locked
+prompts, real continuity, a real film — around a demo story. That is worth
+seeing for free, and it is not worth paying for, which is why a paid vendor
+will not shoot it without asking you first:
+
+```
+  ────────────────────────────────────────────────────────────────
+  You are about to pay seedance-ark for the placeholder story.
+
+  Nothing here was written from "rust". You would be buying
+  the demo — the same two characters, the same two rooms and the
+  same dialogue everyone else gets, rendered in your chosen look.
+
+  Cost if you continue: about ¥18.60 (10 clips at ¥1.86).
+  ────────────────────────────────────────────────────────────────
+  type yes to shoot the placeholder anyway:
+```
 
 ---
 
@@ -191,6 +219,59 @@ was declined:
 
 A refused submit creates no task, so the attempt costs nothing.
 
+### The same face, shot after shot
+
+The bible locks a character's **description**, and a description names a
+*type*, not a person. "Late thirties, wiry, a scar through the left eyebrow,
+an olive jacket with a torn left cuff" stops the cuff mending itself between
+episodes — and a text-to-video model still casts a new face that fits it every
+single time. Glasses in shot 2, no glasses in shot 5, a different jaw in
+episode 2. No amount of prompt writing fixes that, because words are not a
+face.
+
+Identity needs a picture:
+
+```bash
+oneword rust --vendor seedance                      # adopts faces as it goes
+oneword rust --cast-image C1=wen.jpg --vendor seedance
+oneword rust --no-cast-images                       # every shot casts its own face
+oneword rust --reset-cast                           # forget them and adopt again
+```
+
+A portrait is sent with every shot that character appears in. It is either
+supplied by you or **adopted**: the first shot a character appears in *alone*
+becomes their portrait, and it is then frozen — the same bargain the reference
+stills make for locations. Frozen matters for the same reason: re-adopting a
+face every episode is exactly how a series becomes a different cast while each
+individual step looks fine.
+
+```
+  locked a face for Wen — every later shot is sent it
+```
+
+A shot with two people in it is never adopted from; there would be no way to
+say which face was whose. And a portrait shot in `noir` is not that character
+in `anime`, so after a restyle the old portraits are set aside rather than
+fighting the new look:
+
+```
+· the locked portraits were shot in noir, not anime — setting them aside for this run.
+  Add --reset-cast to adopt new ones in this look, or --style to go back.
+```
+
+Moderation applies here too, and harder: a good photorealistic portrait is
+exactly what reads as a photograph of a real person. The submit degrades one
+rung at a time — first frame plus portraits, then portraits alone, then text —
+and the report says which rung the shot was actually made on:
+
+```
+  note: shot 4 was shot without the cast portraits — the platform refused them,
+  so that face may differ
+```
+
+Non-photographic styles (`anime`, `storybook`, `stopmotion`) are refused far
+less often, which is a real argument for shooting a series in one.
+
 ### Music and ambience
 
 ```bash
@@ -215,6 +296,25 @@ a score is a model call with its own cost and its own licensing questions, and
 neither belongs behind a flag that looks like an audio mixer.
 
 ## Choosing a look
+
+The look is locked for the life of the series, so the moment to choose it is
+before the first shot — not after ten clips arrive in a look nobody picked.
+An interactive run asks:
+
+```
+Pick a look. It is locked for the whole series.
+
+  1) 16mm         16mm film
+                  photographic, 16mm film stock with visible grain and gate weave
+  2) analog       Analog video
+  …
+  0) let the writing model choose (whatever it imagines, unlocked)
+
+  style [1]:
+```
+
+Pass `--style` and it never asks. Pass `--yes` and it never asks anything at
+all, which is what a scheduled run wants.
 
 ```bash
 oneword styles                              # what is available
@@ -307,6 +407,15 @@ With no multimodal model configured, character drift is reported as
 `NOT CHECKED` — never as a pass — and the series summary is `PARTIAL` rather
 than `CONSISTENT`. A green tick nobody earned is worse than an honest blank.
 
+It is also the only thing that can tell you whether the cast portraits worked,
+so that is the reason to configure one. Where a character has a locked
+portrait, the drift pass compares against **the portrait itself** rather than a
+frame from whichever shot they happened to appear in first — the picture that
+was actually sent to every later shot, asking the exact question that matters.
+And a shot whose portraits the platform refused is marked as such, so a face
+that drifted in that shot reads as a shot the mechanism never touched rather
+than as a mechanism that failed.
+
 The local screen is triage, not a verdict. Its thresholds were measured, not
 chosen, and the measurement says the distributions overlap: about 80% of
 comparisons land in a review band the screen refuses to decide alone, and get
@@ -314,6 +423,52 @@ handed to the multimodal comparison, which reads the written facts — the torn
 cuff, the green handrail — instead of counting pixels.
 [`docs/drift-calibration.md`](docs/drift-calibration.md) has the numbers and the
 command that reproduces them.
+
+### Why did *this* one drift
+
+A distance says how far apart two frames are. It does not say what was
+different about how the shot was made — and that answer is already on disk,
+because every episode report records whether a shot continued the previous one,
+whether the platform refused its first frame, and whether the cast portraits
+were sent. Joining the two costs nothing:
+
+```bash
+python scripts/explain_drift.py out/rust
+```
+
+```
+ep  shot  subject          verdict        comp    col    str  how it was shot
+ 1     2  Stairwell C      CONSISTENT    0.010  0.012  0.008  chained (from shot 1)
+ 2     3  Unit 704         DRIFTED       0.112  0.168  0.007  chain refused: InputImage…
+
+By how the shot was made
+  chained          n=1  0.010
+  chain refused    n=3  min 0.112 · p50 0.112 · max 0.123
+```
+
+That shape matters more than any single row. A shot continued from the previous
+shot's last frame and a shot generated from text are **two populations**, about
+an order of magnitude apart, and one threshold held against both is one ruler
+measuring two things. So the bands in `oneword/drift.py` are keyed by
+population — and the `chained` band is marked `measured_on: None`, because
+borrowing a number is allowed and pretending it was measured is not. The report
+says out loud when a verdict was reached with a borrowed threshold.
+
+The same run also reports **which channel decided each row**. On real series
+footage the rooms really are the same rooms, so the structural channel correctly
+barely moves and colour carries the whole verdict — which means the composite is
+a one-channel measurement wearing a two-channel label. It now says so rather
+than letting you assume otherwise.
+
+Measure the bands on your own footage once you have some:
+
+```bash
+python scripts/calibrate_drift.py --series out/rust
+```
+
+It splits same-place pairs by how the later shot was made and prints bands ready
+to paste. Where a population has too little footage to separate, it says that
+instead of emitting a number.
 
 ### Not paying twice
 
@@ -375,6 +530,10 @@ prints the exact line to add.
   An unpriced (model, resolution, duration) combination is refused.
 * `VIDEO_BUDGET_CNY` raises `BudgetExceeded` *before* submitting, not after.
 * One run holds exactly one vendor; report validation rejects mixed-vendor runs.
+* A paid vendor will not shoot the placeholder story without being told to.
+  It prints what the run would cost and what the film would actually be, and
+  waits for `yes`. Exit code 10 means you said no; nothing was generated and
+  nothing was charged.
 
 ## Rules about telling the truth
 
@@ -419,18 +578,34 @@ set of things that have been done for real, with money, against the live API:
   now surfaces that instead of `HTTP Error 404`. Generation takes minutes per
   clip, so the run reports progress rather than sitting silent.
 
-Everything else — the drift thresholds, the repair loop under real failure —
+* **A cross-episode drift pass over real footage**, which falsified a guess
+  written down in this repo. The calibration doc predicted that a locked series
+  would vary *less* than the synthetic harness; two real episodes varied
+  **more** — four of six same-room readings landed beyond the harness's worst
+  same-room pair. It also showed structure barely moving while colour carried
+  every verdict. Both are now reported rather than assumed, and the bands are
+  split by population. [`docs/drift-calibration.md`](docs/drift-calibration.md)
+  has the six readings.
+
+Everything else — the repair loop under real failure, the character comparison —
 is exercised by tests and by the offline vendor, which is not the same thing as
 proven in production. Where that distinction matters it is stated in place.
 
 ## Not done yet
 
 1. **Character drift without a model.** Locations are screened locally;
-   characters need a multimodal key or they are honestly left unchecked.
-2. **Thresholds measured on real footage.** The drift bands are calibrated on a
-   synthetic harness. Rerun `scripts/calibrate_drift.py` against real Seedance
-   episodes and move the constants — now possible, not yet done.
+   characters need a multimodal key or they are honestly left unchecked. No run
+   has yet had one, so nothing has checked a face in this repo.
+2. **Bands measured per population.** `scripts/calibrate_drift.py --series` now
+   measures real footage and splits chained from unchained pairs, but the
+   `chained` band still carries the synthetic numbers and is marked
+   `measured_on: None` until a real run fills it in.
 3. **A demo film in the repo.** Paid clips exist; none is committed here yet.
+4. **Character portraits against the live API.** The request shape, the
+   degradation ladder and the freezing rules are asserted by tests and driven
+   through a fake opener. Whether Ark's moderation accepts an *adopted* frame
+   from its own output — a face it generated — has not been paid for and
+   found out yet. Expect the drop-to-text path to fire; it is built for that.
 
 ## Windows notes
 
@@ -452,6 +627,6 @@ produces a film:
 python -m unittest discover -s tests -t .
 ```
 
-127 tests, none of which touch a paid API. The Ark adapter is driven through a
+212 tests, none of which touch a paid API. The Ark adapter is driven through a
 fake opener, so the request shape, the no-retry-on-submit rule and the budget
 cap are all asserted without spending anything.

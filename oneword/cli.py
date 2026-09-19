@@ -8,6 +8,7 @@
 
 Exit codes
     0   every episode delivered, no drift found
+    10  you were warned what you were about to buy and said no
     20  an episode still had blockers after its repair rounds
     21  pipeline error
     30  cross-episode drift found
@@ -21,8 +22,10 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import opening
 from .audit import build_auditor
 from .bible import SeriesBible, build_bible
+from .cast import CastError, CastPortraits, parse_supplied
 from .drift import DriftError, audit_series
 from .pipeline import PipelineError, run_episode
 from .styles import StyleError, PRESETS, resolve as resolve_style
@@ -30,6 +33,7 @@ from .vendors import VendorError, build_vendor
 from .voice import VoiceError, build_voice
 
 EXIT_OK = 0
+EXIT_STOPPED = 10
 EXIT_BLOCKERS = 20
 EXIT_ERROR = 21
 EXIT_DRIFT = 30
@@ -86,8 +90,30 @@ def _parser() -> argparse.ArgumentParser:
             "a named look, or a path to your own style JSON: "
             + ", ".join(sorted(PRESETS))
             + ". Chosen once and locked like everything else; changing it on an "
-            "existing bible restyles the series and requires --reset-references"
+            "existing bible restyles the series and requires --reset-references. "
+            "Left out, an interactive run asks before it shoots anything"
         ),
+    )
+    parser.add_argument(
+        "--cast-image", action="append", default=None, metavar="ID=PATH",
+        help=(
+            "a portrait for one character, e.g. --cast-image C1=face.jpg. "
+            "Repeatable. Sent with every shot that character appears in, because "
+            "a description names a type and only a picture fixes a face. Without "
+            "one, the first shot a character is alone in becomes their portrait"
+        ),
+    )
+    parser.add_argument(
+        "--no-cast-images", action="store_true",
+        help="never send character portraits — every shot casts its own face",
+    )
+    parser.add_argument(
+        "--reset-cast", action="store_true",
+        help="forget the locked character portraits and adopt them again from this run",
+    )
+    parser.add_argument(
+        "--yes", action="store_true",
+        help="ask nothing: take the defaults and accept any spending warning",
     )
     parser.add_argument("--language", default="en", help="en | zh")
     parser.add_argument("--bible", default=None, help="reuse an existing bible.json")
@@ -160,6 +186,63 @@ def _progress_printer(stream=None):
     return report
 
 
+def _load_cast(root: Path, bible, args, supplied: dict[str, Path], vendor):
+    """The frozen portraits for this series, or None if they are switched off.
+
+    A portrait is what makes shot 9 the same person as shot 1, so it is frozen
+    the moment it exists — and it is frozen *in a look*. A portrait shot in
+    `noir` is not this character in `anime`; using it after a restyle would
+    fight the style rather than hold the face, so those are set aside and
+    re-adopted rather than silently reused.
+    """
+
+    if args.no_cast_images:
+        print("· character portraits off — every shot casts its own face")
+        return None
+    if not getattr(vendor, "accepts_reference_images", False):
+        if supplied:
+            print(
+                f"· {vendor.name} does not take reference images — the portraits you "
+                "supplied are not being used"
+            )
+        return None
+
+    portraits = CastPortraits(root)
+    if args.reset_cast:
+        portraits.clear()
+        print("· forgot the locked character portraits; this run adopts them again")
+
+    for cid, path in supplied.items():
+        try:
+            name = bible.character(cid).get("name", cid)
+        except KeyError:
+            known = ", ".join(sorted(bible.data.get("characters", {})))
+            raise CastError(f"no character {cid!r} in this bible. Known ids: {known}")
+        portraits.put(
+            cid, path, source="supplied", style=bible.style_name, force=True
+        )
+        print(f"· portrait supplied for {name} ({cid}): {path.name}")
+
+    stale = {
+        style for style in portraits.styles_present()
+        if style not in ("", "unknown", bible.style_name)
+    }
+    if stale and not args.reset_cast:
+        print(
+            f"· the locked portraits were shot in {', '.join(sorted(stale))}, not "
+            f"{bible.style_name} — setting them aside for this run."
+        )
+        print("  Add --reset-cast to adopt new ones in this look, or --style to go back.")
+        return None
+
+    if not portraits.data["portraits"]:
+        print(
+            "· no character portraits yet — the first shot each character is alone "
+            "in becomes theirs, and every later shot is sent that face."
+        )
+    return portraits
+
+
 def _print_drift(report: dict) -> None:
     summary = report["summary"]
     print(
@@ -169,6 +252,18 @@ def _print_drift(report: dict) -> None:
     )
     if not report["model_looked"]:
         print("  (no multimodal model looked; locations screened on pixels, characters unchecked)")
+        if summary["not_checked"]:
+            print(
+                f"  {summary['not_checked']} character appearance(s) unchecked — a whole-frame "
+                "fingerprint cannot honestly judge a face.\n"
+                "  Set LLM_API_KEY / LLM_MODEL to a vision model and rerun to check them, "
+                "and to find out whether the cast portraits held."
+            )
+    for band in summary.get("unmeasured_bands", []):
+        print(
+            f"  note: {band} shots were judged with a borrowed threshold — measure it with "
+            "`python scripts/calibrate_drift.py --series <dir>`"
+        )
     for finding in report["findings"]:
         if finding["verdict"] in ("DRIFTED", "REVIEW"):
             distance = finding["distance"]
@@ -210,7 +305,15 @@ def main(argv: list[str] | None = None) -> int:
         print("--shots must be between 3 and 8", file=sys.stderr)
         return EXIT_ERROR
 
+    ask = opening.is_interactive() and not args.yes
+
     try:
+        supplied_faces = parse_supplied(args.cast_image)
+        # Before anything is written or bought: the look is locked for the life
+        # of the series, so it is chosen here or not at all.
+        if not args.bible:
+            args.style = opening.choose_style(args.style, ask=ask)
+
         if args.bible:
             bible = SeriesBible.load(args.bible)
             print(f"· bible reused: {bible.title} ({bible.path})")
@@ -236,10 +339,9 @@ def main(argv: list[str] | None = None) -> int:
                 allow_model=not args.no_model,
                 style=args.style,
             )
-            source = provenance["source"]
-            if provenance.get("error"):
-                print(f"· writing model unavailable ({provenance['error']}); using the local template")
-            print(f"· bible written by {source}: {bible.title} · style {bible.style_name}")
+            print(f"· bible: {bible.title} · style {bible.style_name}")
+            for line in opening.provenance_lines(provenance, bible.word):
+                print(line)
 
         root = Path(args.out) / bible.slug
         root.mkdir(parents=True, exist_ok=True)
@@ -255,6 +357,23 @@ def main(argv: list[str] | None = None) -> int:
                 "  (no TTS engine on this machine — shipping picture and subtitles "
                 "without speech. Install espeak-ng, or set VOLC_TTS_APPID/VOLC_TTS_TOKEN.)"
             )
+
+        # The last moment before money. A placeholder story rendered by a paid
+        # vendor is the one combination nobody would have chosen on purpose.
+        template = bible.data.get("provenance", {}).get("source") == opening.TEMPLATE
+        if template and getattr(vendor, "generative", False):
+            for line in opening.paid_template_warning(
+                bible.word,
+                vendor.name,
+                getattr(vendor, "unit_cost", None),
+                args.episodes * args.shots,
+            ):
+                print(line)
+            if not opening.confirm("  type yes to shoot the placeholder anyway: ", ask=ask):
+                print("· stopped. Nothing was generated and nothing was charged.")
+                return EXIT_STOPPED
+
+        portraits = _load_cast(root, bible, args, supplied_faces, vendor)
 
         exit_code = EXIT_OK
         index: list[dict] = []
@@ -276,6 +395,8 @@ def main(argv: list[str] | None = None) -> int:
                 music=args.music,
                 music_db=args.music_db,
                 resume=not args.fresh,
+                portraits=portraits,
+                use_portraits=not args.no_cast_images,
             )
             paths = report.pop("_paths")
             if report["summary"].get("reused_shot_ids"):
@@ -298,6 +419,18 @@ def main(argv: list[str] | None = None) -> int:
                     f"  note: shot {dropped['shot_id']} was shot from text — "
                     "the platform refused its first frame, so that cut may jump"
                 )
+            for dropped in report.get("dropped_portraits", []):
+                print(
+                    f"  note: shot {dropped['shot_id']} was shot without the cast "
+                    "portraits — the platform refused them, so that face may differ"
+                )
+            adopted = [
+                cid for cid, entry in (report.get("cast_portraits") or {}).items()
+                if entry.get("from_shot", "").startswith(f"ep{number}-")
+            ]
+            if adopted:
+                names = ", ".join(bible.character(cid).get("name", cid) for cid in adopted)
+                print(f"  locked a face for {names} — every later shot is sent it")
             for stale in report.get("stale_chains", []):
                 print(
                     f"  note: shot {stale['shot_id']} continues shot "
@@ -355,7 +488,7 @@ def main(argv: list[str] | None = None) -> int:
 
         return exit_code
 
-    except (VendorError, VoiceError, PipelineError, StyleError, ValueError) as exc:
+    except (VendorError, VoiceError, PipelineError, StyleError, CastError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_ERROR
 

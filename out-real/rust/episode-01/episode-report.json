@@ -1,6 +1,6 @@
 {
   "report_version": "series-episode-1",
-  "generated_at": "2026-09-19T03:57:32+00:00",
+  "generated_at": "2026-09-19T06:26:54+00:00",
   "seed_word": "rust",
   "series_title": "《rust》",
   "episode": 1,
@@ -17,6 +17,12 @@
     "4": "3"
   },
   "stale_chains": [],
+  "dropped_chains": [
+    {
+      "shot_id": "4",
+      "reason": "Ark returned HTTP 400 for model 'doubao-seedance-2-0-mini-260615': InputImageSensitiveContentDetected.PrivacyInformation · The request failed because the input image 'content[1]' may contain real person. Request id: 0217897990217982cb8822a4864991e162f30172d7ae7b6e4d638"
+    }
+  ],
   "narrated_shots": 0,
   "auditor": "frame-continuity",
   "evidence_source": "RULE TRIAGE ONLY",
@@ -95,7 +101,8 @@
       "provider": "seedance-ark",
       "file": "shot-01-take-01.mp4",
       "model_tier": "economy",
-      "continues_shot": null
+      "continues_shot": null,
+      "chain_dropped": null
     },
     {
       "round": 0,
@@ -104,7 +111,8 @@
       "provider": "seedance-ark",
       "file": "shot-02-take-01.mp4",
       "model_tier": "economy",
-      "continues_shot": "1"
+      "continues_shot": "1",
+      "chain_dropped": null
     },
     {
       "round": 0,
@@ -113,7 +121,8 @@
       "provider": "seedance-ark",
       "file": "shot-03-take-01.mp4",
       "model_tier": "primary",
-      "continues_shot": null
+      "continues_shot": null,
+      "chain_dropped": null
     },
     {
       "round": 0,
@@ -122,7 +131,8 @@
       "provider": "seedance-ark",
       "file": "shot-04-take-01.mp4",
       "model_tier": "primary",
-      "continues_shot": "3"
+      "continues_shot": null,
+      "chain_dropped": "Ark returned HTTP 400 for model 'doubao-seedance-2-0-mini-260615': InputImageSensitiveContentDetected.PrivacyInformation · The request failed because the input image 'content[1]' may contain real person. Request id: 0217897990217982cb8822a4864991e162f30172d7ae7b6e4d638"
     }
   ],
   "audit_events": [
@@ -161,10 +171,12 @@
     "initial_generation_count": 4,
     "total_generation_count": 4,
     "repaired_shot_ids": [],
+    "reused_shot_ids": [],
+    "reused_saving_cny": 0.0,
     "whole_film_rerun": false,
     "runtime_sec": 20.0,
     "subtitles_burned": true,
-    "wall_clock_sec": 559.2
+    "wall_clock_sec": 514.5
   },
   "outputs": {
     "video": "episode-01.mp4",

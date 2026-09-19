@@ -1,0 +1,185 @@
+{
+  "report_version": "series-episode-1",
+  "generated_at": "2026-09-19T06:38:14+00:00",
+  "seed_word": "rust",
+  "series_title": "《rust》",
+  "episode": 2,
+  "episode_title": "Episode 2",
+  "logline": "rust, one floor lower than yesterday.",
+  "vendor": "seedance-ark",
+  "vendor_is_generative": true,
+  "voice_engine": "volc-tts",
+  "audio_mode": "keep",
+  "dialogue_performed_by_model": false,
+  "music": null,
+  "chain_links": {
+    "2": "1",
+    "4": "3"
+  },
+  "stale_chains": [],
+  "dropped_chains": [
+    {
+      "shot_id": "4",
+      "reason": "Ark returned HTTP 400 for model 'doubao-seedance-2-0-mini-260615': InputImageSensitiveContentDetected.PrivacyInformation · The request failed because the input image 'content[1]' may contain real person. Request id: 0217897996394271883cd0e543057f1d760ca21bba67f3c53b92d"
+    }
+  ],
+  "narrated_shots": 0,
+  "auditor": "frame-continuity",
+  "evidence_source": "RULE TRIAGE ONLY",
+  "bible_provenance": {
+    "source": "local-template",
+    "model": null,
+    "error": null,
+    "style": "16mm"
+  },
+  "policy": {
+    "shot_count": 4,
+    "single_vendor": true,
+    "regenerate_blockers_only": true,
+    "max_repair_rounds": 2
+  },
+  "shots": [
+    {
+      "shot_id": "1",
+      "beat": "establish",
+      "location": "Stairwell C",
+      "characters": [
+        "Wen"
+      ],
+      "model_tier": "economy",
+      "final_take": 1,
+      "file": "shot-01-take-01.mp4",
+      "line": "It started at the edges. Nobody looked at the edges.",
+      "prompt": "[STYLE] photographic, 16mm film stock with visible grain and gate weave; 25mm, moderate depth of field, occasional focus breathing; available light, blown windows, halation around highlights; palette warm fading stock, green-leaning shadows, milky blacks; nostalgic, immediate, imperfect.\n[LOCATION · Stairwell C] A concrete stairwell with painted green handrails, one flickering tube light, numbered landing plates, and a steel fire door at the bottom.\n[CHARACTER · Wen] Late thirties, wiry build, black hair cropped short and greying at the temple, deep vertical scar through the left eyebrow, olive workwear jacket with a torn left cuff, always carrying a brass key ring on the belt.\n\n[ACTION] Wen stands still while the rust spreads across the far wall\n\n[CAMERA] wide establishing shot, locked off\n\n[CONTINUITY — MUST HOLD]\nMUST: SER-01: C1's left jacket cuff is torn in every shot.\nMUST: SER-02: C2 wears round wire glasses and the red collar pin in every shot.\nMUST: SER-03: The wall clock in Unit 704 always reads 4:10.\nMUST: SER-04: Stairwell handrails are green; they never change colour.\nMUST: SER-05: Only one warm practical light source is visible per shot.\n\n[NEGATIVE] text, watermark, extra fingers, warped architecture, style change, clean digital sharpness, noise reduction, HDR, stabilised smoothness"
+    },
+    {
+      "shot_id": "2",
+      "beat": "escalate",
+      "location": "Stairwell C",
+      "characters": [
+        "Wen"
+      ],
+      "model_tier": "economy",
+      "final_take": 1,
+      "file": "shot-02-take-01.mp4",
+      "line": "You said this room was sealed.",
+      "prompt": "[STYLE] photographic, 16mm film stock with visible grain and gate weave; 25mm, moderate depth of field, occasional focus breathing; available light, blown windows, halation around highlights; palette warm fading stock, green-leaning shadows, milky blacks; nostalgic, immediate, imperfect.\n[LOCATION · Stairwell C] A concrete stairwell with painted green handrails, one flickering tube light, numbered landing plates, and a steel fire door at the bottom.\n[CHARACTER · Wen] Late thirties, wiry build, black hair cropped short and greying at the temple, deep vertical scar through the left eyebrow, olive workwear jacket with a torn left cuff, always carrying a brass key ring on the belt.\n\n[ACTION] Wen forces the door open and finds the rust already inside\n\n[CAMERA] medium shot, slow handheld drift\n\n[CONTINUITY — MUST HOLD]\nMUST: SER-01: C1's left jacket cuff is torn in every shot.\nMUST: SER-02: C2 wears round wire glasses and the red collar pin in every shot.\nMUST: SER-03: The wall clock in Unit 704 always reads 4:10.\nMUST: SER-04: Stairwell handrails are green; they never change colour.\nMUST: SER-05: Only one warm practical light source is visible per shot.\n\n[NEGATIVE] text, watermark, extra fingers, warped architecture, style change, clean digital sharpness, noise reduction, HDR, stabilised smoothness"
+    },
+    {
+      "shot_id": "3",
+      "beat": "turn",
+      "location": "Unit 704",
+      "characters": [
+        "Wen",
+        "Lin"
+      ],
+      "model_tier": "primary",
+      "final_take": 1,
+      "file": "shot-03-take-01.mp4",
+      "line": "I knew. I have known since the first night.",
+      "prompt": "[STYLE] photographic, 16mm film stock with visible grain and gate weave; 25mm, moderate depth of field, occasional focus breathing; available light, blown windows, halation around highlights; palette warm fading stock, green-leaning shadows, milky blacks; nostalgic, immediate, imperfect.\n[LOCATION · Unit 704] A one-room flat with a west-facing window, a folding table under it, a wall of taped paper notes, and an unplugged wall clock stopped at 4:10.\n[CHARACTER · Wen] Late thirties, wiry build, black hair cropped short and greying at the temple, deep vertical scar through the left eyebrow, olive workwear jacket with a torn left cuff, always carrying a brass key ring on the belt.\n[CHARACTER · Lin] Early twenties, slight build, long dark hair tied at the nape, round wire glasses, oversized grey knit sweater with a stretched right sleeve, a red enamel pin on the collar.\n\n[ACTION] Lin says the thing Wen has been refusing to hear\n\n[CAMERA] medium close-up, slow push in\n\n[CONTINUITY — MUST HOLD]\nMUST: SER-01: C1's left jacket cuff is torn in every shot.\nMUST: SER-02: C2 wears round wire glasses and the red collar pin in every shot.\nMUST: SER-03: The wall clock in Unit 704 always reads 4:10.\nMUST: SER-04: Stairwell handrails are green; they never change colour.\nMUST: SER-05: Only one warm practical light source is visible per shot.\n\n[NEGATIVE] text, watermark, extra fingers, warped architecture, style change, clean digital sharpness, noise reduction, HDR, stabilised smoothness"
+    },
+    {
+      "shot_id": "4",
+      "beat": "cost",
+      "location": "Unit 704",
+      "characters": [
+        "Wen"
+      ],
+      "model_tier": "primary",
+      "final_take": 1,
+      "file": "shot-04-take-01.mp4",
+      "line": "Then it was never the building. It was us.",
+      "prompt": "[STYLE] photographic, 16mm film stock with visible grain and gate weave; 25mm, moderate depth of field, occasional focus breathing; available light, blown windows, halation around highlights; palette warm fading stock, green-leaning shadows, milky blacks; nostalgic, immediate, imperfect.\n[LOCATION · Unit 704] A one-room flat with a west-facing window, a folding table under it, a wall of taped paper notes, and an unplugged wall clock stopped at 4:10.\n[CHARACTER · Wen] Late thirties, wiry build, black hair cropped short and greying at the temple, deep vertical scar through the left eyebrow, olive workwear jacket with a torn left cuff, always carrying a brass key ring on the belt.\n\n[ACTION] Wen destroys the one object that was keeping the rust out\n\n[CAMERA] close-up, static\n\n[CONTINUITY — MUST HOLD]\nMUST: SER-01: C1's left jacket cuff is torn in every shot.\nMUST: SER-02: C2 wears round wire glasses and the red collar pin in every shot.\nMUST: SER-03: The wall clock in Unit 704 always reads 4:10.\nMUST: SER-04: Stairwell handrails are green; they never change colour.\nMUST: SER-05: Only one warm practical light source is visible per shot.\n\n[NEGATIVE] text, watermark, extra fingers, warped architecture, style change, clean digital sharpness, noise reduction, HDR, stabilised smoothness"
+    }
+  ],
+  "generation_events": [
+    {
+      "round": 0,
+      "shot_id": "1",
+      "attempt": 1,
+      "provider": "seedance-ark",
+      "file": "shot-01-take-01.mp4",
+      "model_tier": "economy",
+      "continues_shot": null,
+      "chain_dropped": null
+    },
+    {
+      "round": 0,
+      "shot_id": "2",
+      "attempt": 1,
+      "provider": "seedance-ark",
+      "file": "shot-02-take-01.mp4",
+      "model_tier": "economy",
+      "continues_shot": "1",
+      "chain_dropped": null
+    },
+    {
+      "round": 0,
+      "shot_id": "3",
+      "attempt": 1,
+      "provider": "seedance-ark",
+      "file": "shot-03-take-01.mp4",
+      "model_tier": "primary",
+      "continues_shot": null,
+      "chain_dropped": null
+    },
+    {
+      "round": 0,
+      "shot_id": "4",
+      "attempt": 1,
+      "provider": "seedance-ark",
+      "file": "shot-04-take-01.mp4",
+      "model_tier": "primary",
+      "continues_shot": null,
+      "chain_dropped": "Ark returned HTTP 400 for model 'doubao-seedance-2-0-mini-260615': InputImageSensitiveContentDetected.PrivacyInformation · The request failed because the input image 'content[1]' may contain real person. Request id: 0217897996394271883cd0e543057f1d760ca21bba67f3c53b92d"
+    }
+  ],
+  "audit_events": [
+    {
+      "round": 0,
+      "shot_id": "1",
+      "decision": "PASS",
+      "evidence_source": "RULE TRIAGE ONLY",
+      "findings": []
+    },
+    {
+      "round": 0,
+      "shot_id": "2",
+      "decision": "PASS",
+      "evidence_source": "RULE TRIAGE ONLY",
+      "findings": []
+    },
+    {
+      "round": 0,
+      "shot_id": "3",
+      "decision": "PASS",
+      "evidence_source": "RULE TRIAGE ONLY",
+      "findings": []
+    },
+    {
+      "round": 0,
+      "shot_id": "4",
+      "decision": "PASS",
+      "evidence_source": "RULE TRIAGE ONLY",
+      "findings": []
+    }
+  ],
+  "summary": {
+    "status": "DELIVERED",
+    "unresolved_shot_ids": [],
+    "initial_generation_count": 4,
+    "total_generation_count": 4,
+    "repaired_shot_ids": [],
+    "reused_shot_ids": [],
+    "reused_saving_cny": 0.0,
+    "whole_film_rerun": false,
+    "runtime_sec": 20.0,
+    "subtitles_burned": true,
+    "wall_clock_sec": 679.5
+  },
+  "outputs": {
+    "video": "episode-02.mp4",
+    "srt": "episode-02.srt"
+  }
+}

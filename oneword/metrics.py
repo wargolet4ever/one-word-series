@@ -109,6 +109,30 @@ def distance(left: dict[str, Any], right: dict[str, Any]) -> dict[str, float]:
     }
 
 
+def tripped_by(distance: dict[str, float]) -> str:
+    """Which channel actually produced this number.
+
+    The composite is a weighted blend, which invites you to assume both halves
+    are doing work. On real series footage they are not: the rooms are the same
+    rooms, so `structure` barely moves and `colour` carries essentially the whole
+    verdict. That is the metric behaving correctly and the *label* misleading —
+    so the label is now computed rather than assumed, and a report that says
+    "colour" on every row is telling you the blend has one live channel.
+    """
+
+    colour_part = COLOUR_WEIGHT * distance["colour"]
+    structure_part = STRUCTURE_WEIGHT * distance["structure"]
+    total = colour_part + structure_part
+    if total <= 0:
+        return "neither"
+    share = colour_part / total
+    if share >= 0.8:
+        return "colour"
+    if share <= 0.2:
+        return "structure"
+    return "both"
+
+
 def best_distance(candidates: list[dict[str, Any]], reference: dict[str, Any]) -> dict[str, float]:
     """The closest of several frames from one shot.
 

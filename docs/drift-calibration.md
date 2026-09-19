@@ -79,12 +79,63 @@ come down without new false alarms.
 
 ## What this calibration is not
 
-The rooms are synthetic. They stand in for real footage because there is no
-corpus of model-generated series footage to calibrate against yet, and they are
-probably **harsher** than reality: a stylistically locked series varies its
-exposure and framing less than this harness does.
+The rooms are synthetic. They stand in for real footage because there was no
+corpus of model-generated series footage to calibrate against, and the guess
+written here was that they are probably **harsher** than reality: a
+stylistically locked series should vary its exposure and framing less than this
+harness does.
 
-So these numbers are a defensible starting point, not a final answer. Once
-there are real Seedance episodes on disk, rerun the same comparison against
-them and move the constants. The method is the durable part; the two numbers
-are not.
+So these numbers are a defensible starting point, not a final answer. The
+method is the durable part; the two numbers are not.
+
+## The first real footage said otherwise
+
+Two Seedance episodes, 8 clips, two locations. Every reading below is a
+*same-place* comparison — the same room against its own locked reference:
+
+| subject | composite | colour | structure |
+|---|---|---|---|
+| Stairwell C, ep1 shot 2 | 0.010 | 0.012 | 0.008 |
+| Stairwell C, ep2 shot 1 | 0.072 | 0.103 | 0.013 |
+| Stairwell C, ep2 shot 2 | 0.075 | 0.109 | 0.013 |
+| Unit 704, ep1 shot 4 | 0.112 | 0.168 | 0.007 |
+| Unit 704, ep2 shot 3 | 0.112 | 0.169 | 0.006 |
+| Unit 704, ep2 shot 4 | 0.123 | 0.186 | 0.007 |
+
+Three things fall out of six rows.
+
+**The guess above was backwards.** The harness's worst same-room pair was
+0.0893. Four of these six real same-room readings are further apart than that,
+and the flag bar at 0.09 — justified as "the harness never produced the same
+room this far apart" — is cleared by real footage of a room that never changed.
+A locked series varies *more* than the synthetic harness, not less.
+
+**The composite is one channel.** Structure stayed inside 0.006–0.013 across
+every row, contributing at most 0.005 to a composite judged against a 0.09 bar.
+Colour ran 0.012 → 0.186. The fingerprint is behaving exactly as designed — the
+rooms really are the same rooms, so the structural channel correctly says
+nothing — but the consequence is that on series footage the verdict is
+`0.65 × colour` and the blend is arithmetic. `metrics.tripped_by` now reports
+which channel decided each row, so a report of all-colour verdicts says so on
+its face instead of implying a two-channel measurement.
+
+**The spread looks like a population split, not noise.** 0.010 sits an order of
+magnitude below the rest. The hypothesis is that it is the one shot continued
+from the previous shot's last frame, and the rest are independent text-to-video
+guesses at a room — two populations being measured with one ruler.
+`scripts/explain_drift.py` joins the drift report to the episode reports and
+answers that from files a finished run already wrote; `BANDS` in
+`oneword/drift.py` is keyed by population so the answer has somewhere to go.
+The `chained` band is deliberately marked `measured_on: None` until it is.
+
+## Measuring real footage
+
+```bash
+python scripts/calibrate_drift.py --series out/rust
+```
+
+Same comparison, real clips: the earlier shot's first frame as the reference,
+the later shot's three sampled frames as candidates, best of the three — the
+call `drift.audit_series` makes. It splits same-place pairs by how the later
+shot was made and prints bands ready to paste into `BANDS`. If a population has
+too little footage to separate, it says so instead of emitting a number.
