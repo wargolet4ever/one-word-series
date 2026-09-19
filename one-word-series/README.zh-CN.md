@@ -62,13 +62,13 @@ oneword rust --episodes 2
 [LOCATION · Stairwell C] A concrete stairwell with painted green handrails, one
 flickering tube light, numbered landing plates, and a steel fire door at the bottom.
 [CHARACTER · Wen] Late thirties, wiry build, black hair cropped short and greying at
-the temple, deep vertical scar through the left eyebrow, olive workwear jacket with a
-torn left cuff, always carrying a brass key ring on the belt.
+the temple, a deep vertical scar splitting one eyebrow, olive workwear jacket with a
+torn cuff, always carrying a brass key ring on the belt.
 
 [ACTION] Wen forces the door open and finds the rust already inside
 [CAMERA] medium shot, slow handheld drift
 [CONTINUITY — MUST HOLD]
-MUST: SER-01: C1's left jacket cuff is torn in every shot.
+MUST: SER-01: C1's jacket cuff is torn through in every shot.
 …
 ```
 
@@ -206,7 +206,7 @@ oneword rust --chain off                # 每镜独立生成
 ### 让同一个人一直是同一个人
 
 bible 锁的是人物的**描述**，而描述指的是一类人，不是某一个人。
-「三十多岁，精瘦，左眉一道竖疤，橄榄色工装外套左袖口撕裂」——
+「三十多岁，精瘦，一道竖疤劈开一侧眉毛，橄榄色工装外套袖口撕裂」——
 这能保证袖口不会自己补好，但挡不住文生视频每一镜都重新挑一张符合描述的脸：
 第 2 镜戴眼镜，第 5 镜没戴，第 2 集换了下颌线。
 这件事靠改 prompt 是修不好的，因为文字不是脸。
@@ -379,6 +379,43 @@ oneword drift out/rust          # 多集运行结束后也会自动跑一遍
 比对——后者读的是写下来的事实（袖口有没有破、扶手是不是绿的），不是数像素。
 [`docs/drift-calibration.md`](docs/drift-calibration.md) 里有全部数字和复现命令。
 
+### 哪些设定锁得住，哪些锁不住
+
+第一次用视觉模型跑真实素材，出了 7 条 DRIFTED。把模型实际看到的东西读一遍，
+有一个模式藏不住：
+
+| 锁定的事实 | 被判违反 | 模型实际看到的 |
+|---|---|---|
+| 挂钟显示 4:10 | 6 次 | 10:52、8:25、8:25、7:35、7:35、10:10 |
+| **左**眉上的疤 | 4 次 | 右脸颊、额头、额头、右眉 |
+| **左**袖口撕裂 | 5 次 | 卷起、卷起、卷起、卷起、没破 |
+| C2 的红色领针 | 4 次 | 没有、没有、没有、深色纽扣 |
+| **只有一个**暖光源 | 3 次 | 窗光+环境光、冷色荧光、窗光+壁灯 |
+| **扶手是绿色的** | **0 次** | *—— 一次都没被判违反 ——* |
+
+最后一行是对照组：一个大面积、有颜色、属于建筑本身的事实，每一镜都守住了。
+失败的全是**小的、分左右的、要读数的、要计数的**。而挂钟比这还糟：
+**没有任何视频模型能把表盘画成你指定的时间**，所以那条规则注定在那个房间的
+每一镜、永远失败。而它就写在这个仓库自带的模板里。
+
+这才是"锁不住的设定"的真实代价。7 条里有 6 条是圣经自己提出的不可能要求，
+而唯一那条真正的发现 —— 夹克变成了衬衫 —— 被工具自己制造的噪音埋掉了。
+
+所以现在圣经在开拍之前就会被检查：
+
+```
+· 2 locked fact(s) a generator is unlikely to ever hold, so they will read
+  as drift in every episode:
+    SER-03 [readable-value]
+      The wall clock in Unit 704 always reads 4:10.
+      → say the clock is stopped and unlit, not what time it shows
+  These are not caught by spending more; they are caught by rewording.
+```
+
+同一份清单也写进了给写剧本模型的 prompt，所以从你的词生成的圣经也会避开它们；
+漂移报告里引用了这类事实的差异会被标注出来 —— 属实，但不是新闻。
+分类和每一类的来历在 `oneword/lockability.py`。
+
 ### 这一条到底为什么漂了
 
 距离只告诉你两帧差多远，不告诉你这一镜是**怎么拍的**——而后者早就写在盘上了：
@@ -519,6 +556,10 @@ README 里的说法都是代码确实会做的事。这一节是更窄的一组�
   真正的原因在响应体里 —— 适配器现在会把它显示出来，而不是干巴巴一句
   `HTTP Error 404`。单镜生成要几分钟，所以现在会报进度而不是静默。
 
+* **用视觉模型看过真实素材**，结果发现它自己报的 7 条漂移里有 6 条是
+  圣经提出的不可能要求，而不是生成器的失败 —— 其中包括这个仓库自带的一条规则：
+  要求每一条 clip 里的挂钟都显示 4:10。`oneword/lockability.py` 和 README 里那张表
+  就是读模型实际看到了什么读出来的。
 * **对真实素材跑过一次跨集漂移检查，并且推翻了这个仓库里写下的一个猜测。**
   标定文档当初预测：锁定风格的剧集变化应该比合成靶场**小**。真实的两集变化
   更**大** —— 六个同场景读数里有四个超过了靶场同场景的最差配对。同一次检查
@@ -531,9 +572,9 @@ README 里的说法都是代码确实会做的事。这一节是更窄的一组�
 
 ## 还没做的
 
-1. **没有模型时的人物漂移。** 场景有本地初筛，人物必须有多模态 key，
-   否则如实留空不检查。到目前为止还没有哪次运行配过，也就是说这个仓库里
-   还没有任何东西真的看过一张脸。
+1. **参考图到底有没有用。** 视觉模型现在已经确认了它要解决的那个问题确实存在 ——
+   同一个人物的疤在四个镜头里跑到了脸颊、额头和另一边眉毛 —— 但那批素材是在
+   参考图机制之前拍的，整个过程没送过任何定妆照。修复本身仍然没有被测量过。
 2. **用真实素材量出来的阈值。** 现在的阈值仍然来自合成靶场，而第一次真实运行
    证明靶场比现实**更松**而不是更严 —— 一个根本没变过的房间读出了 0.072 和
    0.123。`scripts/calibrate_drift.py --series` 能量真实素材，但数字还没动，
@@ -560,5 +601,5 @@ README 里的说法都是代码确实会做的事。这一节是更窄的一组�
 python -m unittest discover -s tests -t .
 ```
 
-233 个测试，全部不碰付费 API。方舟适配器走 fake opener，
+248 个测试，全部不碰付费 API。方舟适配器走 fake opener，
 所以请求结构、提交不重试、预算上限这三件事都被断言了，且不花钱。

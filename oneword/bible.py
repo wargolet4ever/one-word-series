@@ -60,8 +60,19 @@ Hard requirements:
   `line` is ONE spoken or narrated sentence, under 18 words, or "" for silence.
   `camera` is a shot size plus movement, e.g. "medium close-up, slow push in".
 - `continuity_rules`: 4-6 rules that a single still frame could falsify,
-  e.g. "the left sleeve of C1 is always torn at the cuff". Give each an id
+  e.g. "C1's sleeve is always torn at the cuff". Give each an id
   SER-01.. and a severity of "regenerate" or "local_fix".
+
+  A rule is only worth writing if a video model can actually hold it. These
+  were measured against real footage and NEVER held — do not write them, in
+  the rules or in any locked_appearance or locked_description:
+    * a dial, clock or screen at a stated value ("the clock reads 4:10")
+    * specified lettering ("the sign reads EXIT")
+    * which SIDE of a body a detail is on ("the left eyebrow", "right pocket")
+    * an object a few pixels across (a collar pin, a badge, an earring)
+    * a count or an exclusion ("only one light source", "exactly two chairs")
+  What does hold: large shapes, materials, and colour — "green handrails",
+  "an olive workwear jacket", "a steel fire door". Prefer those every time.
 
 Return exactly this JSON shape:
 {{"title": "...", "logline": "...",
@@ -137,8 +148,8 @@ def _fallback(word: str, *, episodes: int, shots: int) -> dict[str, Any]:
                 "name": "Wen",
                 "role": "building caretaker",
                 "locked_appearance": (
-                    "Late thirties, wiry build, black hair cropped short and greying at the temple, "
-                    "deep vertical scar through the left eyebrow, olive workwear jacket with a torn left cuff, "
+                    "Late thirties, wiry build, black hair cropped short and greying at the temples, "
+                    "a deep vertical scar splitting one eyebrow, olive workwear jacket with a torn cuff, "
                     "always carrying a brass key ring on the belt."
                 ),
                 "voice": {"gender": "male", "age": "adult", "quality": "low, unhurried"},
@@ -148,8 +159,7 @@ def _fallback(word: str, *, episodes: int, shots: int) -> dict[str, Any]:
                 "role": "the tenant who stayed",
                 "locked_appearance": (
                     "Early twenties, slight build, long dark hair tied at the nape, round wire glasses, "
-                    "oversized grey knit sweater with a stretched right sleeve, "
-                    "a red enamel pin on the collar."
+                    "oversized grey knit sweater, stretched and pilling at both sleeves."
                 ),
                 "voice": {"gender": "female", "age": "young adult", "quality": "quiet, precise"},
             },
@@ -166,16 +176,16 @@ def _fallback(word: str, *, episodes: int, shots: int) -> dict[str, Any]:
                 "name": "Unit 704",
                 "locked_description": (
                     "A one-room flat with a west-facing window, a folding table under it, "
-                    "a wall of taped paper notes, and an unplugged wall clock stopped at 4:10."
+                    "a wall of taped paper notes, and a dead wall clock with its glass cracked."
                 ),
             },
         },
         "continuity_rules": [
-            {"id": "SER-01", "text": "C1's left jacket cuff is torn in every shot.", "severity": "regenerate"},
-            {"id": "SER-02", "text": "C2 wears round wire glasses and the red collar pin in every shot.", "severity": "regenerate"},
-            {"id": "SER-03", "text": "The wall clock in Unit 704 always reads 4:10.", "severity": "local_fix"},
+            {"id": "SER-01", "text": "C1's jacket cuff is torn through in every shot.", "severity": "regenerate"},
+            {"id": "SER-02", "text": "C2 wears round wire glasses in every shot.", "severity": "regenerate"},
+            {"id": "SER-03", "text": "The wall clock in Unit 704 is dark and cracked, never working.", "severity": "local_fix"},
             {"id": "SER-04", "text": "Stairwell handrails are green; they never change colour.", "severity": "regenerate"},
-            {"id": "SER-05", "text": "Only one warm practical light source is visible per shot.", "severity": "local_fix"},
+            {"id": "SER-05", "text": "Unit 704 is lit warm; Stairwell C is lit cold.", "severity": "local_fix"},
         ],
         "episodes": [
             {

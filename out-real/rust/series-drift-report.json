@@ -1,6 +1,6 @@
 {
   "report_version": "series-drift-1",
-  "generated_at": "2026-09-19T11:38:52+00:00",
+  "generated_at": "2026-09-19T11:54:54+00:00",
   "series_title": "《rust》",
   "seed_word": "rust",
   "style": "16mm",
@@ -54,8 +54,10 @@
       "rebased": 0
     }
   ],
-  "model_looked": false,
-  "model_errors": [],
+  "model_looked": true,
+  "model_errors": [
+    "ModelUnavailable: vision model doubao-seed-2-0-mini-260428 failed: TimeoutError: The read operation timed out"
+  ],
   "missing_clips": [],
   "findings": [
     {
@@ -89,8 +91,8 @@
       "kind": "character",
       "id": "C1",
       "name": "Wen",
-      "verdict": "NOT CHECKED",
-      "evidence_source": "NOT CHECKED",
+      "verdict": "CONSISTENT",
+      "evidence_source": "REFERENCE VISUAL AUDIT",
       "distance": null,
       "differences": [],
       "tripped_by": null,
@@ -139,8 +141,8 @@
       "kind": "character",
       "id": "C1",
       "name": "Wen",
-      "verdict": "NOT CHECKED",
-      "evidence_source": "NOT CHECKED",
+      "verdict": "CONSISTENT",
+      "evidence_source": "REFERENCE VISUAL AUDIT",
       "distance": null,
       "differences": [],
       "tripped_by": null,
@@ -185,10 +187,36 @@
       "kind": "character",
       "id": "C1",
       "name": "Wen",
-      "verdict": "NOT CHECKED",
-      "evidence_source": "NOT CHECKED",
+      "verdict": "DRIFTED",
+      "evidence_source": "REFERENCE VISUAL AUDIT",
       "distance": null,
-      "differences": [],
+      "differences": [
+        {
+          "fact": "Wen has a deep vertical scar through the left eyebrow",
+          "evidence": "In Frame B, Wen's scar is located on his right cheek near his right eye, not through his left eyebrow",
+          "severity": "regenerate"
+        },
+        {
+          "fact": "SER-01: C1's left jacket cuff is torn in every shot",
+          "evidence": "In Frame B, Wen wears an olive button-up shirt (not a workwear jacket) with a rolled left cuff that is not torn",
+          "severity": "local_fix"
+        },
+        {
+          "fact": "SER-02: C2 wears the red collar pin in every shot",
+          "evidence": "In Frame B, the woman has a red button on her sweater's shoulder, not a red collar pin",
+          "severity": "local_fix"
+        },
+        {
+          "fact": "SER-03: The wall clock in Unit 704 always reads 4:10",
+          "evidence": "In Frame B, the wall clock shows approximately 10:52, not 4:10",
+          "severity": "regenerate"
+        },
+        {
+          "fact": "SER-05: Only one warm practical light source is visible per shot",
+          "evidence": "In Frame B, multiple light sources (bright window light and ambient room light) are visible, violating the rule",
+          "severity": "local_fix"
+        }
+      ],
       "tripped_by": null,
       "chain_state": "not chained",
       "chain_detail": "cuts to another location",
@@ -206,8 +234,8 @@
       "kind": "character",
       "id": "C2",
       "name": "Lin",
-      "verdict": "NOT CHECKED",
-      "evidence_source": "NOT CHECKED",
+      "verdict": "CONSISTENT",
+      "evidence_source": "REFERENCE VISUAL AUDIT",
       "distance": null,
       "differences": [],
       "tripped_by": null,
@@ -228,13 +256,29 @@
       "id": "L2",
       "name": "Unit 704",
       "verdict": "DRIFTED",
-      "evidence_source": "REFERENCE PIXEL SCREEN",
+      "evidence_source": "REFERENCE VISUAL AUDIT",
       "distance": {
         "colour": 0.1682,
         "structure": 0.0066,
         "composite": 0.1116
       },
-      "differences": [],
+      "differences": [
+        {
+          "fact": "The wall clock in Unit 704 always reads 4:10",
+          "evidence": "The wall clock in Frame B displays approximately 8:25, not 4:10",
+          "severity": "local_fix"
+        },
+        {
+          "fact": "C2 wears round wire glasses and the red collar pin in every shot",
+          "evidence": "Frame B does not include C2; the round wire glasses and red collar pin are worn by C1 instead of C2",
+          "severity": "regenerate"
+        },
+        {
+          "fact": "Unit 704 has a west-facing window with a folding table under it",
+          "evidence": "In Frame B, the folding table is positioned in front of C1 (not under the window), and the window is located on the right edge of the frame (not the central west-facing window from Frame A)",
+          "severity": "local_fix"
+        }
+      ],
       "tripped_by": "colour",
       "chain_state": "chain refused",
       "chain_detail": "Ark returned HTTP 400 for model 'doubao-seedance-2-0-mini-260615': InputImageSensitiveContentDetected.PrivacyInformation · The request failed because the input image 'content[1]' may contain real person. Request id: 0217897990217982cb8822a4864991e162f30172d7ae7b6e4d638",
@@ -252,10 +296,21 @@
       "kind": "character",
       "id": "C1",
       "name": "Wen",
-      "verdict": "NOT CHECKED",
-      "evidence_source": "NOT CHECKED",
+      "verdict": "DRIFTED",
+      "evidence_source": "REFERENCE VISUAL AUDIT",
       "distance": null,
-      "differences": [],
+      "differences": [
+        {
+          "fact": "the wall clock in Unit 704 always reads 4:10",
+          "evidence": "the wall clock in the room shows approximately 8:25",
+          "severity": "regenerate"
+        },
+        {
+          "fact": "Wen has a deep vertical scar through the left eyebrow",
+          "evidence": "Wen's scar is located on the forehead, not through the left eyebrow",
+          "severity": "local_fix"
+        }
+      ],
       "tripped_by": null,
       "chain_state": "chain refused",
       "chain_detail": "Ark returned HTTP 400 for model 'doubao-seedance-2-0-mini-260615': InputImageSensitiveContentDetected.PrivacyInformation · The request failed because the input image 'content[1]' may contain real person. Request id: 0217897990217982cb8822a4864991e162f30172d7ae7b6e4d638",
@@ -274,13 +329,24 @@
       "id": "L1",
       "name": "Stairwell C",
       "verdict": "REVIEW",
-      "evidence_source": "REFERENCE PIXEL SCREEN",
+      "evidence_source": "REFERENCE VISUAL AUDIT",
       "distance": {
         "colour": 0.1031,
         "structure": 0.013,
         "composite": 0.0716
       },
-      "differences": [],
+      "differences": [
+        {
+          "fact": "C1's left jacket cuff is torn in every shot (SER-01)",
+          "evidence": "C1's left jacket cuff in Frame B is rolled and has no tear",
+          "severity": "local_fix"
+        },
+        {
+          "fact": "C2 wears the red collar pin in every shot (SER-02)",
+          "evidence": "Red collar pin is not visible on C2 in Frame B",
+          "severity": "local_fix"
+        }
+      ],
       "tripped_by": "colour",
       "chain_state": "not chained",
       "chain_detail": "cuts to another location",
@@ -320,13 +386,29 @@
       "id": "L1",
       "name": "Stairwell C",
       "verdict": "REVIEW",
-      "evidence_source": "REFERENCE PIXEL SCREEN",
+      "evidence_source": "REFERENCE VISUAL AUDIT",
       "distance": {
         "colour": 0.1091,
         "structure": 0.013,
         "composite": 0.0754
       },
-      "differences": [],
+      "differences": [
+        {
+          "fact": "C1's left jacket cuff is torn in every shot",
+          "evidence": "In Frame B, C1's left jacket cuff is rolled and not torn",
+          "severity": "local_fix"
+        },
+        {
+          "fact": "C2 wears the red collar pin in every shot",
+          "evidence": "In Frame B, C2 does not have a red collar pin",
+          "severity": "local_fix"
+        },
+        {
+          "fact": "Only one warm practical light source is visible per shot",
+          "evidence": "In Frame B, the visible light source is a cool fluorescent tube, not a warm practical light",
+          "severity": "local_fix"
+        }
+      ],
       "tripped_by": "colour",
       "chain_state": "chained",
       "chain_detail": "from shot 1",
@@ -348,10 +430,16 @@
       "kind": "character",
       "id": "C1",
       "name": "Wen",
-      "verdict": "NOT CHECKED",
-      "evidence_source": "NOT CHECKED",
+      "verdict": "REVIEW",
+      "evidence_source": "REFERENCE VISUAL AUDIT",
       "distance": null,
-      "differences": [],
+      "differences": [
+        {
+          "fact": "C1's left jacket cuff is torn in every shot",
+          "evidence": "In Frame B, Wen's left jacket cuff is rolled and has no visible tear",
+          "severity": "local_fix"
+        }
+      ],
       "tripped_by": null,
       "chain_state": "chained",
       "chain_detail": "from shot 1",
@@ -370,13 +458,24 @@
       "id": "L2",
       "name": "Unit 704",
       "verdict": "DRIFTED",
-      "evidence_source": "REFERENCE PIXEL SCREEN",
+      "evidence_source": "REFERENCE VISUAL AUDIT",
       "distance": {
         "colour": 0.1693,
         "structure": 0.0061,
         "composite": 0.1122
       },
-      "differences": [],
+      "differences": [
+        {
+          "fact": "The wall clock in Unit 704 always reads 4:10",
+          "evidence": "In Frame B, the wall clock displays approximately 7:35 instead of 4:10",
+          "severity": "regenerate"
+        },
+        {
+          "fact": "Only one warm practical light source is visible per shot",
+          "evidence": "In Frame B, two warm light sources are present: natural window light and a lit wall-mounted lamp, while Frame A has only one light source from the window",
+          "severity": "local_fix"
+        }
+      ],
       "tripped_by": "colour",
       "chain_state": "not chained",
       "chain_detail": "cuts to another location",
@@ -394,10 +493,36 @@
       "kind": "character",
       "id": "C1",
       "name": "Wen",
-      "verdict": "NOT CHECKED",
-      "evidence_source": "NOT CHECKED",
+      "verdict": "DRIFTED",
+      "evidence_source": "REFERENCE VISUAL AUDIT",
       "distance": null,
-      "differences": [],
+      "differences": [
+        {
+          "fact": "Wen wears an olive workwear jacket",
+          "evidence": "In Frame B, Wen wears an olive button-up shirt instead of a workwear jacket",
+          "severity": "regenerate"
+        },
+        {
+          "fact": "C1's left jacket cuff is torn in every shot (SER-01)",
+          "evidence": "In Frame B, C1's left jacket cuff is rolled up and not torn",
+          "severity": "local_fix"
+        },
+        {
+          "fact": "Wen has a deep vertical scar through the left eyebrow",
+          "evidence": "In Frame B, Wen has a cut on his forehead, not a vertical scar through his left eyebrow",
+          "severity": "local_fix"
+        },
+        {
+          "fact": "C2 wears a red collar pin in every shot (SER-02)",
+          "evidence": "In Frame B, C2's sweater has a dark button, no red collar pin",
+          "severity": "local_fix"
+        },
+        {
+          "fact": "The wall clock in Unit 704 always reads 4:10 (SER-03)",
+          "evidence": "In Frame B, the wall clock shows approximately 7:35, not 4:10",
+          "severity": "local_fix"
+        }
+      ],
       "tripped_by": null,
       "chain_state": "not chained",
       "chain_detail": "cuts to another location",
@@ -415,10 +540,21 @@
       "kind": "character",
       "id": "C2",
       "name": "Lin",
-      "verdict": "NOT CHECKED",
-      "evidence_source": "NOT CHECKED",
+      "verdict": "REVIEW",
+      "evidence_source": "REFERENCE VISUAL AUDIT",
       "distance": null,
-      "differences": [],
+      "differences": [
+        {
+          "fact": "C1's left jacket cuff is torn in every shot",
+          "evidence": "In Frame B, C1's left jacket cuff is not torn; a wound is visible on his left forearm, unlike Frame A where the cuff was torn",
+          "severity": "local_fix"
+        },
+        {
+          "fact": "The wall clock in Unit 704 always reads 4:10",
+          "evidence": "In Frame B, the wall clock shows approximately 7:35, not 4:10",
+          "severity": "local_fix"
+        }
+      ],
       "tripped_by": null,
       "chain_state": "not chained",
       "chain_detail": "cuts to another location",
@@ -437,13 +573,29 @@
       "id": "L2",
       "name": "Unit 704",
       "verdict": "DRIFTED",
-      "evidence_source": "REFERENCE PIXEL SCREEN",
+      "evidence_source": "REFERENCE VISUAL AUDIT",
       "distance": {
         "colour": 0.1861,
         "structure": 0.0071,
         "composite": 0.1234
       },
-      "differences": [],
+      "differences": [
+        {
+          "fact": "Unit 704 has a folding table under its west-facing window",
+          "evidence": "In Frame B, the table under the west-facing window has straight non-folding legs, not a folding table",
+          "severity": "local_fix"
+        },
+        {
+          "fact": "The wall clock in Unit 704 always reads 4:10",
+          "evidence": "In Frame B, the visible wall clock displays a time other than 4:10 (its hands are positioned at approximately 10:10)",
+          "severity": "local_fix"
+        },
+        {
+          "fact": "C2 wears round wire glasses and the red collar pin in every shot",
+          "evidence": "In Frame B, C2 (the female character present in Frame A) is not present in the scene",
+          "severity": "regenerate"
+        }
+      ],
       "tripped_by": "colour",
       "chain_state": "chain refused",
       "chain_detail": "Ark returned HTTP 400 for model 'doubao-seedance-2-0-mini-260615': InputImageSensitiveContentDetected.PrivacyInformation · The request failed because the input image 'content[1]' may contain real person. Request id: 0217897996394271883cd0e543057f1d760ca21bba67f3c53b92d",
@@ -461,10 +613,26 @@
       "kind": "character",
       "id": "C1",
       "name": "Wen",
-      "verdict": "NOT CHECKED",
-      "evidence_source": "NOT CHECKED",
+      "verdict": "DRIFTED",
+      "evidence_source": "REFERENCE VISUAL AUDIT",
       "distance": null,
-      "differences": [],
+      "differences": [
+        {
+          "fact": "black hair cropped short and greying at the temple",
+          "evidence": "In Frame B, the character's hair is longer than cropped short, with no visible greying at the temples.",
+          "severity": "local_fix"
+        },
+        {
+          "fact": "deep vertical scar through the left eyebrow",
+          "evidence": "In Frame B, the vertical scar is located on the character's right eyebrow (viewer's left side of his face) instead of the left eyebrow.",
+          "severity": "local_fix"
+        },
+        {
+          "fact": "the wall clock in Unit 704 always reads 4:10",
+          "evidence": "The wall clock visible in Frame B displays a time other than 4:10.",
+          "severity": "regenerate"
+        }
+      ],
       "tripped_by": null,
       "chain_state": "chain refused",
       "chain_detail": "Ark returned HTTP 400 for model 'doubao-seedance-2-0-mini-260615': InputImageSensitiveContentDetected.PrivacyInformation · The request failed because the input image 'content[1]' may contain real person. Request id: 0217897996394271883cd0e543057f1d760ca21bba67f3c53b92d",
@@ -479,9 +647,9 @@
   ],
   "summary": {
     "checked": 18,
-    "drifted": 3,
-    "review": 2,
-    "not_checked": 10,
+    "drifted": 7,
+    "review": 4,
+    "not_checked": 1,
     "status": "DRIFT FOUND",
     "storyboard_episodes": [],
     "unmeasured_bands": []

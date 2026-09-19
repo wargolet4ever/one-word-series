@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from . import llm, metrics
+from . import llm, lockability, metrics
 from .audit import FRAME_POSITIONS, _chat_vision, _data_url, extract_frames
 from .bible import SeriesBible
 from .cast import CastPortraits
@@ -219,11 +219,17 @@ def visual_compare(
         evidence = (item.get("evidence") or "").strip()
         if not evidence:
             continue
+        fact = (item.get("fact") or "").strip()[:300]
+        # A fact no generator can hold produces this finding in every episode
+        # forever. It is still true that the fact does not hold — it is just
+        # not news, and six of them bury the one that is.
+        unenforceable = [issue.kind for issue in lockability.classify(fact)]
         differences.append(
             {
-                "fact": (item.get("fact") or "").strip()[:300],
+                "fact": fact,
                 "evidence": evidence[:300],
                 "severity": "local_fix" if item.get("severity") == "local_fix" else "regenerate",
+                "unenforceable": unenforceable,
             }
         )
     return differences
@@ -566,7 +572,15 @@ def render_html(report: dict[str, Any]) -> str:
         if finding.get("portrait_refused"):
             made += "<br><small><b>portrait refused</b></small>"
         diffs = "<br>".join(
-            f"<b>{esc(d['fact'])}</b> — {esc(d['evidence'])}" for d in finding["differences"]
+            (
+                f"<b>{esc(d['fact'])}</b> — {esc(d['evidence'])}"
+                + (
+                    f"<br><small>⚠ unenforceable ({esc(', '.join(d['unenforceable']))}) — "
+                    "this fact will fail in every episode until it is reworded</small>"
+                    if d.get("unenforceable") else ""
+                )
+            )
+            for d in finding["differences"]
         ) or "—"
         rows.append(
             "<tr>"
@@ -623,6 +637,19 @@ def render_html(report: dict[str, Any]) -> str:
             f"{len(report['missing_clips'])} shot(s) were skipped because their clip is "
             "not on disk: " + ", ".join(report["missing_clips"][:4])
             + ". Those appearances are absent from this report, not consistent."
+        )
+
+    noise = [
+        d for f in report["findings"] for d in f["differences"] if d.get("unenforceable")
+    ]
+    total_diffs = sum(len(f["differences"]) for f in report["findings"])
+    if noise:
+        kinds = sorted({kind for d in noise for kind in d["unenforceable"]})
+        caveats.append(
+            f"{len(noise)} of {total_diffs} differences below cite a locked fact no generator "
+            f"can hold ({', '.join(kinds)}). They are true and they are not news — the same "
+            "fact will fail in every episode until the bible is reworded. Spending more does "
+            "not fix these."
         )
 
     screened = [f for f in report["findings"] if f.get("tripped_by")]

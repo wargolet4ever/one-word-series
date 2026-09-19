@@ -115,7 +115,7 @@ class BibleTests(unittest.TestCase):
         first = bible.locked_block("L1", ["C1", "C2"])
         second = bible.locked_block("L1", ["C1", "C2"])
         self.assertEqual(first, second)
-        self.assertIn("torn left cuff", first)
+        self.assertIn("torn cuff", first)
 
     def test_every_episode_shares_the_same_locked_strings(self):
         bible = make_bible(episodes=3, shots=4)

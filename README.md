@@ -66,13 +66,13 @@ assembled locally and deterministically:
 [LOCATION · Stairwell C] A concrete stairwell with painted green handrails, one
 flickering tube light, numbered landing plates, and a steel fire door at the bottom.
 [CHARACTER · Wen] Late thirties, wiry build, black hair cropped short and greying at
-the temple, deep vertical scar through the left eyebrow, olive workwear jacket with a
-torn left cuff, always carrying a brass key ring on the belt.
+the temple, a deep vertical scar splitting one eyebrow, olive workwear jacket with a
+torn cuff, always carrying a brass key ring on the belt.
 
 [ACTION] Wen forces the door open and finds the rust already inside
 [CAMERA] medium shot, slow handheld drift
 [CONTINUITY — MUST HOLD]
-MUST: SER-01: C1's left jacket cuff is torn in every shot.
+MUST: SER-01: C1's jacket cuff is torn through in every shot.
 …
 ```
 
@@ -222,8 +222,8 @@ A refused submit creates no task, so the attempt costs nothing.
 ### The same face, shot after shot
 
 The bible locks a character's **description**, and a description names a
-*type*, not a person. "Late thirties, wiry, a scar through the left eyebrow,
-an olive jacket with a torn left cuff" stops the cuff mending itself between
+*type*, not a person. "Late thirties, wiry, a scar splitting one eyebrow,
+an olive jacket with a torn cuff" stops the cuff mending itself between
 episodes — and a text-to-video model still casts a new face that fits it every
 single time. Glasses in shot 2, no glasses in shot 5, a different jaw in
 episode 2. No amount of prompt writing fixes that, because words are not a
@@ -424,6 +424,46 @@ cuff, the green handrail — instead of counting pixels.
 [`docs/drift-calibration.md`](docs/drift-calibration.md) has the numbers and the
 command that reproduces them.
 
+### Facts a generator can hold, and facts it cannot
+
+The first vision pass over real footage produced seven DRIFTED rows. Reading
+what the model actually saw, one pattern was unmissable:
+
+| locked fact | flagged | what the model saw instead |
+|---|---|---|
+| the clock reads 4:10 | 6 | 10:52, 8:25, 8:25, 7:35, 7:35, 10:10 |
+| scar through the **left** eyebrow | 4 | right cheek, forehead, forehead, right eyebrow |
+| the torn **left** cuff | 5 | rolled, rolled, rolled, rolled, not torn |
+| C2's red collar pin | 4 | absent, absent, absent, dark button |
+| **only one** warm practical light | 3 | window+ambient, cool fluorescent, window+lamp |
+| **handrails are green** | **0** | *— never flagged —* |
+
+The last row is the control: a large, coloured, architectural fact held in
+every single shot. Everything that failed was small, lateral, readable, or a
+count — and the clock is worse than that. **No video model renders a dial at a
+time you specify**, so that rule was guaranteed to fail in every shot of that
+room forever. It shipped in this repo's own template.
+
+That is the real cost of an unenforceable fact. Six of seven flags were the
+bible's own impossible demands, and the one real finding — a jacket that had
+become a shirt — was buried under noise the tool generated itself.
+
+So the bible is now checked before anything is shot:
+
+```
+· 2 locked fact(s) a generator is unlikely to ever hold, so they will read
+  as drift in every episode:
+    SER-03 [readable-value]
+      The wall clock in Unit 704 always reads 4:10.
+      → say the clock is stopped and unlit, not what time it shows
+  These are not caught by spending more; they are caught by rewording.
+```
+
+The writing model is told the same list, so a bible written from your word
+avoids them too, and the drift report marks any difference that cites one —
+true, but not news. `oneword/lockability.py` has the categories and why each
+one earned its place.
+
 ### Why did *this* one drift
 
 A distance says how far apart two frames are. It does not say what was
@@ -587,6 +627,11 @@ set of things that have been done for real, with money, against the live API:
   now surfaces that instead of `HTTP Error 404`. Generation takes minutes per
   clip, so the run reports progress rather than sitting silent.
 
+* **A vision model over real footage**, which found that six of its own seven
+  drift flags were the bible's impossible demands rather than the generator's
+  failures — including a rule shipped in this repo asking every clip for a
+  clock reading 4:10. `oneword/lockability.py` and the table in the README
+  came out of reading what the model actually saw.
 * **A cross-episode drift pass over real footage**, which falsified a guess
   written down in this repo. The calibration doc predicted that a locked series
   would vary *less* than the synthetic harness; two real episodes varied
@@ -602,9 +647,10 @@ proven in production. Where that distinction matters it is stated in place.
 
 ## Not done yet
 
-1. **Character drift without a model.** Locations are screened locally;
-   characters need a multimodal key or they are honestly left unchecked. No run
-   has yet had one, so nothing has checked a face in this repo.
+1. **Whether the cast portraits work.** A vision model has now confirmed the
+   problem they were built for — the same character's scar moved to a cheek, a
+   forehead and the other eyebrow across four shots — but that footage predates
+   the portraits and was shot without them. The fix is still unmeasured.
 2. **The one band, measured on real footage.** It still comes from the
    synthetic harness, which the first real run showed to be *looser* than
    reality rather than harsher — a room that never changed read 0.072 and
@@ -637,6 +683,6 @@ produces a film:
 python -m unittest discover -s tests -t .
 ```
 
-233 tests, none of which touch a paid API. The Ark adapter is driven through a
+248 tests, none of which touch a paid API. The Ark adapter is driven through a
 fake opener, so the request shape, the no-retry-on-submit rule and the budget
 cap are all asserted without spending anything.

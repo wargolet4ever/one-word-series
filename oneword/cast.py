@@ -3,7 +3,7 @@
 ## What the bible can and cannot do
 
 The bible locks a character's *described* facts and puts them, byte for byte,
-into every prompt: late thirties, wiry, a scar through the left eyebrow, an
+into every prompt: late thirties, wiry, a scar splitting one eyebrow, an
 olive jacket with a torn cuff. That description stops the cuff mending itself
 between episodes.
 

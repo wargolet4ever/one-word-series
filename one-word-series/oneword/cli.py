@@ -23,7 +23,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import opening
+from . import lockability, opening
 from .audit import build_auditor
 from .bible import SeriesBible, build_bible
 from .cast import CastError, CastPortraits, parse_supplied
@@ -395,6 +395,13 @@ def main(argv: list[str] | None = None) -> int:
             print(f"· bible: {bible.title} · style {bible.style_name}")
             for line in opening.provenance_lines(provenance, bible.word):
                 print(line)
+
+        # Before anything is shot: a locked fact no generator can hold is a
+        # guaranteed drift finding in every episode, and enough of them bury
+        # the real ones. Rewording costs nothing; discovering it after eight
+        # paid clips costs eight paid clips.
+        for line in lockability.lines(lockability.review(bible.data)):
+            print(line)
 
         root = Path(args.out) / bible.slug
         root.mkdir(parents=True, exist_ok=True)
