@@ -344,6 +344,64 @@ class CliSaysWhyNobodyLookedTests(unittest.TestCase):
         self.assertIn("shot-02-take-01.mp4", text)
 
 
+class ErrorBodyTests(unittest.TestCase):
+    """`HTTP Error 404: Not Found` is true and useless.
+
+    The platform puts the reason in the body and urllib hands it over exactly
+    once, on the exception. The video adapter learned this the expensive way
+    and grew ArkHTTPError; llm.py and audit.py kept throwing the body away, so
+    a wrong or unactivated vision model id reported a bare number and sent
+    someone to check their key, their network and their spelling in that order.
+    """
+
+    def http_error(self, code=404, body=None, raw=None):
+        import io
+        import urllib.error
+
+        payload = raw if raw is not None else json.dumps(body).encode("utf-8")
+        return urllib.error.HTTPError("https://x/v1", code, "Not Found", {}, io.BytesIO(payload))
+
+    def test_the_platforms_reason_survives(self):
+        detail = drift.llm.error_detail(self.http_error(body={
+            "error": {"code": "ModelNotFound", "message": "does not exist or you have no access"}
+        }))
+        self.assertIn("404", detail)
+        self.assertIn("ModelNotFound", detail)
+        self.assertIn("no access", detail)
+
+    def test_a_non_json_body_is_still_shown(self):
+        detail = drift.llm.error_detail(self.http_error(code=502, raw=b"<html>nginx</html>"))
+        self.assertIn("502", detail)
+        self.assertIn("nginx", detail)
+
+    def test_an_exception_with_no_body_degrades_to_its_type(self):
+        self.assertIn("TimeoutError", drift.llm.error_detail(TimeoutError("timed out")))
+
+    def test_an_unreadable_body_does_not_become_a_second_failure(self):
+        class Hostile(Exception):
+            code = 500
+
+            def read(self):
+                raise OSError("stream already consumed")
+
+        self.assertEqual(drift.llm.error_detail(Hostile()), "HTTP 500")
+
+    def test_a_failing_vision_call_names_the_model_and_the_reason(self):
+        from oneword import audit
+
+        with unittest.mock.patch.dict(
+            os.environ, {"LLM_MODEL": "text-only-model", "LLM_API_KEY": "k"}
+        ), unittest.mock.patch.object(
+            audit.llm, "post_chat",
+            side_effect=self.http_error(body={"error": {"message": "no vision capability"}}),
+        ):
+            with self.assertRaises(drift.llm.ModelUnavailable) as caught:
+                audit._chat_vision("system", [])
+        message = str(caught.exception)
+        self.assertIn("text-only-model", message)
+        self.assertIn("no vision capability", message)
+
+
 class ValidatorTests(unittest.TestCase):
     def base(self, **overrides):
         finding = {

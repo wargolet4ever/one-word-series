@@ -164,9 +164,14 @@ class FrameContinuityAuditor:
 
 
 def _chat_vision(system: str, content: list[dict[str, Any]]) -> dict[str, Any]:
-    import urllib.request
+    """One vision call, and on failure the platform's reason rather than a number.
 
-    base = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+    A vision model id that is wrong, unactivated, or text-only all answer 404
+    or 400 with the actual reason in the body. Raising `HTTP Error 404: Not
+    Found` sends you to check your key, your network and your spelling in that
+    order, when the platform already said which one it was.
+    """
+
     payload = {
         "model": os.environ["LLM_MODEL"],
         "temperature": 0.1,
@@ -175,17 +180,13 @@ def _chat_vision(system: str, content: list[dict[str, Any]]) -> dict[str, Any]:
             {"role": "user", "content": content},
         ],
     }
-    request = urllib.request.Request(
-        f"{base}/chat/completions",
-        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {os.environ['LLM_API_KEY']}",
-            "Content-Type": "application/json",
-        },
-        method="POST",
-    )
-    with urllib.request.urlopen(request, timeout=180) as response:
-        body = json.loads(response.read().decode("utf-8"))
+    try:
+        body = llm.post_chat(payload)
+    except Exception as exc:  # noqa: BLE001 — re-raised with the reason attached
+        raise llm.ModelUnavailable(
+            f"vision model {os.environ.get('LLM_MODEL', '?')} failed: "
+            f"{llm.error_detail(exc)}"
+        ) from exc
     return llm._extract_json(body["choices"][0]["message"]["content"])
 
 

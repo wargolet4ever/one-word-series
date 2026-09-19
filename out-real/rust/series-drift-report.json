@@ -1,6 +1,6 @@
 {
   "report_version": "series-drift-1",
-  "generated_at": "2026-09-19T08:49:38+00:00",
+  "generated_at": "2026-09-19T09:07:02+00:00",
   "series_title": "《rust》",
   "seed_word": "rust",
   "style": "16mm",
@@ -55,9 +55,7 @@
     }
   ],
   "model_looked": false,
-  "model_errors": [
-    "HTTPError: HTTP Error 404: Not Found"
-  ],
+  "model_errors": [],
   "missing_clips": [],
   "findings": [
     {

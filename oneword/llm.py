@@ -63,6 +63,57 @@ def _extract_json(raw: str) -> Any:
     return json.loads(raw[start : end + 1])
 
 
+def error_detail(exc: Exception) -> str:
+    """The platform's own reason, not just the status line.
+
+    `HTTP Error 404: Not Found` is true and useless. Ark puts the reason in the
+    response body — "model not found or you have no access to it", "the model
+    is not activated" — and urllib hands that body to you exactly once, on the
+    exception object. Discarding it is how a run tells you a number and leaves
+    you to guess; this cost a real debugging session on the video adapter
+    before `vendors.ArkHTTPError` was written, and this is the same fix for the
+    other two callers that never got it.
+    """
+
+    code = getattr(exc, "code", None)
+    label = f"HTTP {code}" if code else type(exc).__name__
+    read = getattr(exc, "read", None)
+    if not callable(read):
+        return f"{label}: {exc}"
+    try:
+        raw = read().decode("utf-8", "replace")
+    except Exception:  # noqa: BLE001 — a body we cannot read is not a new failure
+        return label
+    try:
+        body = json.loads(raw)
+    except ValueError:
+        return f"{label}: {raw.strip()[:300]}" if raw.strip() else label
+    error = body.get("error") if isinstance(body, dict) else None
+    if isinstance(error, dict):
+        parts = [str(error.get(key, "")).strip() for key in ("code", "message")]
+        detail = " ".join(part for part in parts if part)
+        if detail:
+            return f"{label}: {detail[:300]}"
+    return f"{label}: {raw.strip()[:300]}"
+
+
+def post_chat(payload: dict[str, Any], *, timeout: int = 180) -> dict[str, Any]:
+    """One chat/completions call, with the platform's reason kept on failure."""
+
+    base = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1").rstrip("/")
+    request = urllib.request.Request(
+        f"{base}/chat/completions",
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {os.environ['LLM_API_KEY']}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
 def chat_json(
     system: str,
     user: str,
@@ -101,9 +152,9 @@ def chat_json(
             break
         except Exception as exc:  # noqa: BLE001 — classified, then decided
             if not _retryable(exc) or attempt == MAX_RETRIES:
-                code = getattr(exc, "code", None)
-                label = f"HTTP {code}" if code else type(exc).__name__
-                raise ModelUnavailable(f"writing model failed: {label}") from exc
+                raise ModelUnavailable(
+                    f"writing model failed: {error_detail(exc)}"
+                ) from exc
             time.sleep(RETRY_BACKOFF_S[min(attempt, len(RETRY_BACKOFF_S) - 1)])
 
     raw = body["choices"][0]["message"]["content"]
