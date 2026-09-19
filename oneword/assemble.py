@@ -135,7 +135,12 @@ def normalise(
         # stays alive, the words stay legible.
         gain = 10 ** (duck_db / 20)
         parts.append(f"[orig]volume={gain:.3f}[ducked]")
-        parts.append("[ducked][speech]amix=inputs=2:duration=longest:dropout_transition=0[mixed]")
+        # normalize=0: amix otherwise divides both inputs by two, which drops
+        # the narration 6 dB for no reason anyone asked for.
+        parts.append(
+            "[ducked][speech]amix=inputs=2:duration=longest:dropout_transition=0:"
+            "normalize=0,alimiter=limit=0.95[mixed]"
+        )
         source = "[mixed]"
     elif use_speech:
         source = "[speech]"

@@ -191,6 +191,21 @@ def audit_series(
     if reset_references:
         registry.clear()
 
+    # A style change legitimately alters every frame, so comparing across one
+    # produces a report full of drift that is not drift. Refusing is the only
+    # honest answer: the references have to be re-based, and that is a decision
+    # rather than something to do quietly on the user's behalf.
+    style_now = bible.style_name
+    shot_under = registry.styles_present() - {"unknown"}
+    foreign = shot_under - {style_now}
+    if foreign:
+        raise DriftError(
+            f"the references were shot in {', '.join(sorted(foreign))} but this bible "
+            f"is now {style_now}. Every frame differs by design, so a comparison would "
+            "report drift that is not drift.\n  Re-base them deliberately: "
+            "oneword drift <dir> --reset-references"
+        )
+
     workdir = root / "references" / ".frames"
     findings: list[dict[str, Any]] = []
     model_used = False
@@ -217,6 +232,7 @@ def audit_series(
                     registry.adopt(
                         kind, subject_id, frames[0],
                         episode=episode, shot_id=shot["shot_id"], name=display,
+                        style=style_now,
                     )
                     findings.append(
                         {
@@ -278,6 +294,7 @@ def audit_series(
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "series_title": bible.title,
         "seed_word": bible.word,
+        "style": style_now,
         "episodes": [int(r["data"]["episode"]) for r in reports],
         "thresholds": {
             "same_place_max": SAME_PLACE_MAX,

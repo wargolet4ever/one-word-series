@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from . import llm
+from . import llm, styles
 
 BIBLE_VERSION = "series-bible-1"
 
@@ -102,6 +102,10 @@ _FALLBACK_LINES = (
     "Then it was never the building. It was us.",
     "Leave it. Whatever it becomes now, it becomes without me.",
 )
+# Two shots in the stairwell, two in the flat, then back — so consecutive
+# shots share a location and there is something for chaining to continue.
+_FALLBACK_LOCATIONS = ("L1", "L1", "L2", "L2", "L1", "L1", "L2", "L2")
+
 _FALLBACK_CAMERA = (
     "wide establishing shot, locked off",
     "medium shot, slow handheld drift",
@@ -183,7 +187,11 @@ def _fallback(word: str, *, episodes: int, shots: int) -> dict[str, Any]:
                         "action": _FALLBACK_ACTIONS[i % len(_FALLBACK_ACTIONS)].format(
                             a="Wen", b="Lin", w=w
                         ),
-                        "location_id": "L1" if i % 2 == 0 else "L2",
+                        # Scenes come in runs, not alternating shot by shot:
+                        # a film that changes room on every cut is not how
+                        # anything is shot, and it leaves first-frame chaining
+                        # with no two adjacent shots to work between.
+                        "location_id": _FALLBACK_LOCATIONS[i % len(_FALLBACK_LOCATIONS)],
                         "character_ids": ["C1"] if i % 3 != 2 else ["C1", "C2"],
                         "camera": _FALLBACK_CAMERA[i % len(_FALLBACK_CAMERA)],
                         "line": _FALLBACK_LINES[i % len(_FALLBACK_LINES)],
@@ -277,6 +285,10 @@ class SeriesBible:
         return self.data["slug"]
 
     @property
+    def style_name(self) -> str:
+        return styles.current_name(self.data)
+
+    @property
     def title(self) -> str:
         return self.data.get("title", self.word)
 
@@ -303,9 +315,17 @@ class SeriesBible:
 
         grammar = self.data.get("visual_grammar", {})
         world = self.data.get("world", {})
+        # `render` names the medium — photographic, cel animation, watercolour.
+        # It leads the block because it is the fact every other visual fact is
+        # conditional on. Bibles written before styles existed have no render
+        # and read exactly as they did.
+        style_parts = [
+            grammar.get("render", ""), grammar.get("lens", ""), grammar.get("lighting", ""),
+            f"palette {world.get('palette', '')}" if world.get("palette") else "",
+            world.get("tone", ""),
+        ]
         lines = [
-            f"[STYLE] {grammar.get('lens', '')}; {grammar.get('lighting', '')}; "
-            f"palette {world.get('palette', '')}; {world.get('tone', '')}.",
+            "[STYLE] " + "; ".join(part for part in style_parts if part) + ".",
             f"[LOCATION · {self.location(location_id).get('name', location_id)}] "
             f"{self.location(location_id).get('locked_description', '')}",
         ]
@@ -348,6 +368,7 @@ def build_bible(
     places: int = 2,
     language: str = "en",
     allow_model: bool = True,
+    style: str | None = None,
 ) -> tuple[SeriesBible, dict[str, Any]]:
     """Return (bible, provenance).  Never raises just because there is no key."""
 
@@ -383,6 +404,13 @@ def build_bible(
 
     if data is None:
         data = validate(_fallback(word, episodes=episodes, shots=shots), episodes=episodes, shots=shots)
+
+    chosen = styles.resolve(style)
+    if chosen:
+        # A named style overrides whatever the model imagined, because the
+        # point of choosing one is that it is exactly what you asked for.
+        styles.apply_to(data, chosen)
+        provenance = dict(provenance, style=chosen.get("name"))
 
     data["bible_version"] = BIBLE_VERSION
     data["seed_word"] = word

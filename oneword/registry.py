@@ -88,6 +88,9 @@ class ReferenceRegistry:
         path = self.dir / entry["frame"]
         return path if path.is_file() else None
 
+    def styles_present(self) -> set[str]:
+        return {str(entry.get("style") or "unknown") for entry in self.data["entries"].values()}
+
     def subjects(self) -> list[tuple[str, str]]:
         return [tuple(key.split(":", 1)) for key in sorted(self.data["entries"])]
 
@@ -102,6 +105,7 @@ class ReferenceRegistry:
         episode: int,
         shot_id: str,
         name: str = "",
+        style: str = "",
         force: bool = False,
     ) -> dict[str, Any]:
         """Make this frame the reference.  Refuses to overwrite unless forced."""
@@ -130,6 +134,9 @@ class ReferenceRegistry:
             "episode": int(episode),
             "shot_id": str(shot_id),
             "fingerprint": metrics.fingerprint(self.dir / stored),
+            # Which look this frame was shot in. Comparing across a style
+            # change is meaningless, so the comparison refuses to.
+            "style": style or "unknown",
             "adopted_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         }
         if existing:

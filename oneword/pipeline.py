@@ -30,7 +30,7 @@ from typing import Any
 
 from .contracts import BlockerFinding, GeneratedClip
 
-from . import assemble, chain
+from . import assemble, chain, music as music_mod
 from .audit import RULE_TRIAGE, RuleTriageAuditor
 from .bible import IDENTITY_CRITICAL_BEATS, BEATS, SeriesBible
 from .voice import SilentVoice, audio_duration, write_srt
@@ -186,6 +186,8 @@ def run_episode(
     audio_mode: str = "mix",
     dialogue: str = "auto",
     chaining: str = "auto",
+    music: str | Path | None = None,
+    music_db: float = music_mod.DEFAULT_LEVEL_DB,
 ) -> dict[str, Any]:
     started = time.time()
     root = Path(output_dir)
@@ -326,6 +328,26 @@ def run_episode(
         clip_specs, root, stem=f"episode-{int(episode_no):02d}", mode=audio_mode
     )
 
+    # The score goes on after the cut, never per shot: a bed that restarts at
+    # every cut is what makes an edit sound like a slideshow.
+    scored: dict[str, Any] | None = None
+    if music:
+        try:
+            result = music_mod.underlay(
+                built["video"], Path(music),
+                work_dir / f"scored-{int(episode_no):02d}.mp4",
+                level_db=music_db,
+            )
+            result.path.replace(built["video"])
+            scored = {
+                "track": Path(music).name,
+                "level_db": result.level_db,
+                "ducked_under_dialogue": result.ducked,
+            }
+        except music_mod.MusicError as exc:
+            # A missing or unreadable track loses the score, never the episode.
+            scored = {"track": Path(music).name, "error": str(exc)[:200]}
+
     repaired = sorted(
         {event["shot_id"] for event in generation_events if event["round"] > 0}, key=int
     )
@@ -342,6 +364,7 @@ def run_episode(
         "voice_engine": getattr(voice_engine, "name", "silent"),
         "audio_mode": audio_mode,
         "dialogue_performed_by_model": spoken,
+        "music": scored,
         "chain_links": chain_links,
         "stale_chains": chain.stale_links(chain_links, generation_events),
         "narrated_shots": narrated,

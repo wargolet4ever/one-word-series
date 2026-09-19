@@ -178,6 +178,72 @@ left for you:
   note: shot 3 continues shot 2, which was regenerated afterwards — that cut may jump
 ```
 
+### Music and ambience
+
+```bash
+oneword rust --music score.mp3              # a bed under every episode
+oneword rust --music score.mp3 --music-db -14
+```
+
+The bed goes on **after** the cut, across the whole episode, never per shot: a
+score that restarts at every cut is the most reliable way to make an edit feel
+like a slideshow. A short track loops; the picture stream is copied, not
+re-encoded.
+
+It ducks itself. `sidechaincompress` lets the episode's own audio drive the
+music's gain, so the bed steps back when someone speaks and comes up when they
+stop — a fixed level is either too loud under dialogue or inaudible everywhere
+else. Where the ffmpeg build has no sidechain filter it uses a fixed level and
+says which one you got. A track that cannot be read costs you the score, never
+the episode.
+
+This does not *generate* music. It mixes a file you supply, because generating
+a score is a model call with its own cost and its own licensing questions, and
+neither belongs behind a flag that looks like an audio mixer.
+
+## Choosing a look
+
+```bash
+oneword styles                              # what is available
+oneword rust --style noir                   # a series shot in black and white
+oneword rust --style ./my-look.json         # your own, same keys as a preset
+```
+
+Eight presets ship: `documentary` `noir` `anime` `storybook` `16mm` `clinical`
+`analog` `stopmotion`. Each names the **medium** first — photographic, cel
+animation, watercolour — then lens, lighting, palette, tone, and what the look
+must never contain.
+
+### A style is locked, not a dial
+
+The argument this tool makes is that the look does not drift. A style that can
+be changed casually destroys that argument, so a style is chosen once, written
+into the bible, and injected byte-identically into every prompt of every
+episode — exactly like a character's torn cuff.
+
+Restyling an existing series is allowed and is a deliberate act:
+
+```bash
+oneword rust --bible out/rust/bible.json --style anime --reset-references
+```
+
+It rewrites the style block and **leaves the cast, the locations and the
+episode beats untouched** — a change of medium does not change who anyone is.
+The torn cuff is still torn when the series is redrawn as animation.
+
+### Why it forces a re-base
+
+Every reference still records the style it was shot in. In a new look, every
+frame legitimately differs from the old one, so comparing across a restyle
+would report a series that has fallen apart when all that happened is you
+picked a preset. `oneword drift` refuses rather than producing that report:
+
+```
+the references were shot in noir but this bible is now anime. Every frame
+differs by design, so a comparison would report drift that is not drift.
+  Re-base them deliberately: oneword drift <dir> --reset-references
+```
+
 ## Cross-episode drift
 
 Everything above works inside one episode. This is the part that looks across
@@ -283,13 +349,12 @@ proven in production. Where that distinction matters it is stated in place.
 
 ## Not done yet
 
-1. **Music and ambience.** There is only a dialogue track.
-2. **Character drift without a model.** Locations are screened locally;
+1. **Character drift without a model.** Locations are screened locally;
    characters need a multimodal key or they are honestly left unchecked.
-3. **Thresholds measured on real footage.** The drift bands are calibrated on a
+2. **Thresholds measured on real footage.** The drift bands are calibrated on a
    synthetic harness. Rerun `scripts/calibrate_drift.py` against real Seedance
    episodes and move the constants — now possible, not yet done.
-4. **A demo film in the repo.** Paid clips exist; none is committed here yet.
+3. **A demo film in the repo.** Paid clips exist; none is committed here yet.
 
 ## Windows notes
 
@@ -311,6 +376,6 @@ produces a film:
 python -m unittest discover -s tests -t .
 ```
 
-94 tests, none of which touch a paid API. The Ark adapter is driven through a
+116 tests, none of which touch a paid API. The Ark adapter is driven through a
 fake opener, so the request shape, the no-retry-on-submit rule and the budget
 cap are all asserted without spending anything.

@@ -165,6 +165,64 @@ oneword rust --chain off                # 每镜独立生成
   note: shot 3 continues shot 2, which was regenerated afterwards — that cut may jump
 ```
 
+### 音乐与环境声
+
+```bash
+oneword rust --music score.mp3              # 给每一集垫一层
+oneword rust --music score.mp3 --music-db -14
+```
+
+垫乐是在剪完之后、贯穿整集加上去的，**不是**逐镜加：一条在每个切点重新开始的
+配乐，是让剪辑听起来像幻灯片最可靠的办法。短的音轨会自动循环；画面流是直接
+复制的，不重新编码。
+
+它会自己让路。`sidechaincompress` 用整集自身的声音去驱动音乐的增益，
+有人说话时垫乐退后，停下来时回来 —— 固定音量要么压住对白，要么其他地方根本听不见。
+ffmpeg 没有 sidechain 滤镜时退回固定音量，并明确告诉你用的是哪种。
+音轨读不出来只会丢掉配乐，不会丢掉成片。
+
+它**不生成**音乐，只混合你给的文件。生成配乐是一次有成本、有版权问题的模型调用，
+这两件事都不该藏在一个看起来像调音台的开关后面。
+
+## 选择风格
+
+```bash
+oneword styles                              # 看有哪些
+oneword rust --style noir                   # 整部剧用黑白拍
+oneword rust --style ./my-look.json         # 自己的，键和预设一样
+```
+
+内置八种：`documentary` `noir` `anime` `storybook` `16mm` `clinical`
+`analog` `stopmotion`。每一种先点名**媒介** —— 实拍、赛璐珞动画、水彩 ——
+再是镜头、布光、色板、基调，以及这个look绝对不能出现什么。
+
+### 风格是锁定项，不是旋钮
+
+这个工具的全部论点是「画面不会漂」。一个可以随手改的风格会直接摧毁这个论点，
+所以风格是选一次、写进圣经、逐字节注入每一集每一镜的 —— 和人物那条破袖口
+完全同等的待遇。
+
+给已有的剧换风格是允许的，但那是一次显式决定：
+
+```bash
+oneword rust --bible out/rust/bible.json --style anime --reset-references
+```
+
+它只重写风格块，**人物、场景、分集节拍一律不动** —— 换媒介不换人。
+这部剧重画成动画之后，那条袖口还是破的。
+
+### 为什么必须重设基准
+
+每一张基准帧都记着自己是在哪个风格下拍的。换了 look，每一帧都合法地和旧的不同，
+所以跨风格比对会把一部好好的剧报成散架了 —— 而实际上你只是换了个预设。
+`oneword drift` 拒绝出这种报告：
+
+```
+the references were shot in noir but this bible is now anime. Every frame
+differs by design, so a comparison would report drift that is not drift.
+  Re-base them deliberately: oneword drift <dir> --reset-references
+```
+
 ## 跨集漂移
 
 上面所有东西都在一集之内工作。这一节是唯一跨集看的部分，也是「一句话生成」
@@ -254,13 +312,12 @@ README 里的说法都是代码确实会做的事。这一节是更窄的一组�
 
 ## 还没做的
 
-1. **音乐与环境声。** 现在只有对白轨。
-2. **没有模型时的人物漂移。** 场景有本地初筛，人物必须有多模态 key，
+1. **没有模型时的人物漂移。** 场景有本地初筛，人物必须有多模态 key，
    否则如实留空不检查。
-3. **用真实素材重新标定阈值。** 现在的阈值标定在合成靶场上。拿
+2. **用真实素材重新标定阈值。** 现在的阈值标定在合成靶场上。拿
    `scripts/calibrate_drift.py` 对着真实 Seedance 成片重跑一遍再改常数 ——
    现在已经具备条件，但还没做。
-4. **仓库里放一条演示片。** 付费成片已经有了，还没有一条提交进来。
+3. **仓库里放一条演示片。** 付费成片已经有了，还没有一条提交进来。
 
 ## Windows 上的几件事
 
@@ -278,5 +335,5 @@ README 里的说法都是代码确实会做的事。这一节是更窄的一组�
 python -m unittest discover -s tests -t .
 ```
 
-94 个测试，全部不碰付费 API。方舟适配器走 fake opener，
+116 个测试，全部不碰付费 API。方舟适配器走 fake opener，
 所以请求结构、提交不重试、预算上限这三件事都被断言了，且不花钱。

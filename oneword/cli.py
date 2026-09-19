@@ -25,6 +25,7 @@ from .audit import build_auditor
 from .bible import SeriesBible, build_bible
 from .drift import DriftError, audit_series
 from .pipeline import PipelineError, run_episode
+from .styles import StyleError, PRESETS, resolve as resolve_style
 from .vendors import VendorError, build_vendor
 from .voice import VoiceError, build_voice
 
@@ -69,6 +70,23 @@ def _parser() -> argparse.ArgumentParser:
         help=(
             "continue consecutive shots in one location from the previous "
             "shot's last frame: auto (on when the vendor accepts one) | off"
+        ),
+    )
+    parser.add_argument(
+        "--music", default=None,
+        help="an audio file to lay under every episode, ducked under dialogue",
+    )
+    parser.add_argument(
+        "--music-db", type=float, default=-20.0,
+        help="how far under the picture the bed sits, in dB (default -20)",
+    )
+    parser.add_argument(
+        "--style", default=None,
+        help=(
+            "a named look, or a path to your own style JSON: "
+            + ", ".join(sorted(PRESETS))
+            + ". Chosen once and locked like everything else; changing it on an "
+            "existing bible restyles the series and requires --reset-references"
         ),
     )
     parser.add_argument("--language", default="en", help="en | zh")
@@ -173,6 +191,11 @@ def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv and argv[0] == "drift":
         return drift_main(argv[1:])
+    if argv and argv[0] == "styles":
+        for name, preset in sorted(PRESETS.items()):
+            print(f"{name:<12} {preset['label']}")
+            print(f"{'':<12} {preset['render']}")
+        return EXIT_OK
 
     args = _parser().parse_args(argv)
     if not 3 <= args.shots <= 8:
@@ -183,6 +206,19 @@ def main(argv: list[str] | None = None) -> int:
         if args.bible:
             bible = SeriesBible.load(args.bible)
             print(f"· bible reused: {bible.title} ({bible.path})")
+            chosen = resolve_style(args.style)
+            if chosen and chosen["name"] != bible.style_name:
+                from .styles import apply_to
+
+                was = bible.style_name
+                apply_to(bible.data, chosen)
+                bible.save(bible.path)
+                print(f"· restyled {was} → {bible.style_name}; cast and locations untouched")
+                if not args.reset_references:
+                    print(
+                        "  the reference stills are still in the old look — "
+                        "add --reset-references or the drift pass will refuse to compare"
+                    )
         else:
             bible, provenance = build_bible(
                 args.word,
@@ -190,11 +226,12 @@ def main(argv: list[str] | None = None) -> int:
                 shots=args.shots,
                 language=args.language,
                 allow_model=not args.no_model,
+                style=args.style,
             )
             source = provenance["source"]
             if provenance.get("error"):
                 print(f"· writing model unavailable ({provenance['error']}); using the local template")
-            print(f"· bible written by {source}: {bible.title}")
+            print(f"· bible written by {source}: {bible.title} · style {bible.style_name}")
 
         root = Path(args.out) / bible.slug
         root.mkdir(parents=True, exist_ok=True)
@@ -228,8 +265,19 @@ def main(argv: list[str] | None = None) -> int:
                 audio_mode=args.audio,
                 dialogue=args.dialogue,
                 chaining=args.chain,
+                music=args.music,
+                music_db=args.music_db,
             )
             paths = report.pop("_paths")
+            scored = report.get("music")
+            if scored and scored.get("error"):
+                print(f"  note: no score — {scored['error']}")
+            elif scored:
+                print(
+                    f"  score: {scored['track']} at {scored['level_db']:.0f} dB"
+                    + (", ducked under dialogue" if scored["ducked_under_dialogue"]
+                       else ", fixed level (no sidechain filter in this ffmpeg)")
+                )
             for stale in report.get("stale_chains", []):
                 print(
                     f"  note: shot {stale['shot_id']} continues shot "
@@ -287,7 +335,7 @@ def main(argv: list[str] | None = None) -> int:
 
         return exit_code
 
-    except (VendorError, VoiceError, PipelineError, ValueError) as exc:
+    except (VendorError, VoiceError, PipelineError, StyleError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_ERROR
 
