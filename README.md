@@ -231,6 +231,26 @@ pip install "one-word-series[continuity]"
 continuity checker for AI short films. It catches the errors you cannot see in
 a single frame. Entirely optional; nothing here requires it.
 
+## What has actually been run
+
+Claims in this README are things the code does. This section is the narrower
+set of things that have been done for real, with money, against the live API:
+
+* **A paid Seedance run, end to end.** Prompts composed from the bible,
+  submitted to Ark, polled, downloaded, audited and assembled into a finished
+  episode. Not a mock.
+* **The cost guard on the path it guards.** The price whitelist refused an
+  unlisted combination, and the budget cap is checked before a submit, not
+  after.
+* **Failures that only a live API produces.** Ark answers an unopened or
+  misspelled model id with a 404 whose body holds the real reason; the adapter
+  now surfaces that instead of `HTTP Error 404`. Generation takes minutes per
+  clip, so the run reports progress rather than sitting silent.
+
+Everything else — the drift thresholds, the repair loop under real failure —
+is exercised by tests and by the offline vendor, which is not the same thing as
+proven in production. Where that distinction matters it is stated in place.
+
 ## Not done yet
 
 1. **First-frame chaining.** Every shot is independent text-to-video today.
@@ -241,9 +261,8 @@ a single frame. Entirely optional; nothing here requires it.
    characters need a multimodal key or they are honestly left unchecked.
 4. **Thresholds measured on real footage.** The drift bands are calibrated on a
    synthetic harness. Rerun `scripts/calibrate_drift.py` against real Seedance
-   episodes once they exist and move the constants.
-5. **Evidence of a real paid run.** The adapter is written and mock-tested; it
-   has not yet produced a paid clip.
+   episodes and move the constants — now possible, not yet done.
+5. **A demo film in the repo.** Paid clips exist; none is committed here yet.
 
 ## Windows notes
 
