@@ -1,5 +1,4 @@
 # One Word Series · 一词成剧
-![one word in, a series out](docs/demo.gif)
 
 **One word in, a whole series out — with the continuity written down.**
 
@@ -697,6 +696,6 @@ produces a film:
 python -m unittest discover -s tests -t .
 ```
 
-285 tests, none of which touch a paid API. The Ark adapter is driven through a
+290 tests, none of which touch a paid API. The Ark adapter is driven through a
 fake opener, so the request shape, the no-retry-on-submit rule and the budget
 cap are all asserted without spending anything.

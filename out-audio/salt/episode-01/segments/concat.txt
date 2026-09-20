@@ -1,3 +1,0 @@
-file 'shot-01.mp4'
-file 'shot-02.mp4'
-file 'shot-03.mp4'

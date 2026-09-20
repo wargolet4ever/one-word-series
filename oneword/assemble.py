@@ -117,7 +117,15 @@ def normalise(
     )
     fmt = f"aformat=sample_fmts=fltp:sample_rates={SAMPLE_RATE}:channel_layouts=stereo"
     clip_has_audio = has_audio(clip)
-    use_speech = bool(speech and Path(speech).is_file()) and mode != "keep"
+    # `keep` drops narration because the clip's own voice wins — but a silent
+    # clip has no voice to win with, and dropping the narration there leaves a
+    # segment with nothing in it at all. That is the rule three lines of this
+    # function's own docstring already state; this line used to contradict it,
+    # and did it a second time after the pipeline was fixed, so a rescued run
+    # still came out silent.
+    use_speech = bool(speech and Path(speech).is_file()) and (
+        mode != "keep" or not clip_has_audio
+    )
 
     command = [ffmpeg, "-hide_banner", "-loglevel", "error", "-i", str(clip)]
     parts = [f"[0:v]{video_filter}[vout]"]

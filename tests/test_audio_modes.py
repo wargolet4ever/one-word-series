@@ -19,7 +19,7 @@ from tempfile import TemporaryDirectory
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from oneword import assemble, vendors  # noqa: E402
+from oneword import assemble, vendors, voice  # noqa: E402
 from oneword.bible import build_bible  # noqa: E402
 from oneword.contracts import GeneratedClip  # noqa: E402
 from oneword.pipeline import run_episode  # noqa: E402
@@ -59,8 +59,16 @@ def make_speech(target: Path, *, seconds: float = 1.0) -> Path:
 
 
 def mean_volume(path: Path) -> float:
-    """dB. Silence comes back as -91."""
+    """dB. Silence comes back as -91.
 
+    A missing file is an error, not silence. Returning -91 for one made a test
+    that measured a deleted file — an assert left outside its TemporaryDirectory
+    — look exactly like a test that had caught a silent film. It cost two wrong
+    diagnoses before the helper was the suspect.
+    """
+
+    if not Path(path).is_file():
+        raise AssertionError(f"nothing to measure: {path} does not exist")
     completed = subprocess.run(
         [ffmpeg(), "-hide_banner", "-i", str(path), "-af", "volumedetect",
          "-f", "null", "-"],
@@ -223,3 +231,118 @@ class SilentClipTests(unittest.TestCase):
             with TemporaryDirectory() as tmp:
                 counts[mode] = self.run_mode(mode, tmp)["narrated_shots"]
         self.assertEqual(len(set(counts.values())), 1, counts)
+
+
+class CountingSilentVendor(SilentStubVendor):
+    """Silent clips, and every generate() is a purchase, so the count is the bill."""
+
+    accepts_first_frame = False
+    unit_cost = 1.41
+
+    def __init__(self) -> None:
+        self.generated: list[str] = []
+
+    def generate(self, shot, prompt, attempt, target):
+        self.generated.append(str(shot["shot_id"]))
+        return super().generate(shot, prompt, attempt, target)
+
+
+class RescueASilentFilmTests(unittest.TestCase):
+    """Giving an already-paid-for film a voice must cost nothing.
+
+    This is the real situation the `--audio keep` bug left behind: eight clips
+    bought, downloaded and silent, and a finished episode with no sound in it.
+    The fix is only worth anything if the second run reuses every clip — a rerun
+    that re-buys what is already on disk is not a fix, it is a second bill.
+    """
+
+    def episode(self, root: Path, vendor, voice_engine):
+        bible, _ = build_bible("rust", episodes=1, shots=3, allow_model=False)
+        return run_episode(
+            bible, 1, root,
+            vendor=vendor, auditor=None,
+            voice_engine=voice_engine, audio_mode="keep",
+        )
+
+    def test_the_second_run_adds_a_voice_and_buys_nothing(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+
+            # Run one: the clips are bought, and nothing narrates them.
+            first_vendor = CountingSilentVendor()
+            first = self.episode(root, first_vendor, voice.SilentVoice())
+            self.assertEqual(len(first_vendor.generated), 3)
+            self.assertEqual(first["narrated_shots"], 0)
+            # The container always carries an audio stream; what matters is
+            # whether anything is audible in it. Measure, do not trust the probe.
+            self.assertLess(
+                mean_volume(root / first["outputs"]["video"]), -80.0,
+                "the first run should reproduce the silent film, or this proves nothing",
+            )
+
+            # Run two: same clips, now with a voice engine present.
+            second_vendor = CountingSilentVendor()
+            second = self.episode(root, second_vendor, CountingVoice())
+
+            self.assertEqual(
+                second_vendor.generated, [],
+                "the rerun bought clips it already had on disk",
+            )
+            self.assertEqual(len(second["summary"]["reused_shot_ids"]), 3)
+            self.assertGreater(second["narrated_shots"], 0)
+            self.assertGreater(
+                mean_volume(root / second["outputs"]["video"]), -80.0,
+                "the film is still silent after the run that was supposed to fix it",
+            )
+
+    def test_the_saving_is_reported_so_the_rerun_is_visibly_free(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.episode(root, CountingSilentVendor(), voice.SilentVoice())
+            second = self.episode(root, CountingSilentVendor(), CountingVoice())
+        self.assertAlmostEqual(second["summary"]["reused_saving_cny"], 3 * 1.41, places=2)
+
+
+class NormaliseSilentClipTests(unittest.TestCase):
+    """The invariant asserted where it lives, not only through a whole episode.
+
+    `narrated_shots` counted the TTS calls, so it went up the moment the
+    pipeline stopped skipping them — and stayed green while `normalise` threw
+    the resulting files away under `keep`. Counting work done is not the same
+    as measuring what came out. These listen to the segment.
+    """
+
+    def segment(self, tmp: Path, mode: str, *, tone: int | None):
+        clip = make_clip(tmp / "clip.mp4", seconds=2.0, tone=tone)
+        speech = make_speech(tmp / "speech.wav", seconds=1.0)
+        out = tmp / f"seg-{mode}.mp4"
+        assemble.normalise(clip, speech, out, duration=2.0, mode=mode)
+        return out
+
+    def test_keep_narrates_a_clip_that_has_no_voice(self):
+        with TemporaryDirectory() as tmp:
+            out = self.segment(Path(tmp), "keep", tone=None)
+            self.assertGreater(
+                mean_volume(out), -80.0,
+                "keep dropped the narration from a clip that had nothing of its own",
+            )
+
+    def test_keep_still_refuses_to_dub_over_a_clip_that_speaks(self):
+        # The other half of the rule, and the more important one: a model's own
+        # performance must never get a flat line read laid over the top of it.
+        with TemporaryDirectory() as tmp:
+            tmp = Path(tmp)
+            clip = make_clip(tmp / "clip.mp4", seconds=2.0, tone=440)
+            speech = make_speech(tmp / "speech.wav", seconds=1.0)
+            plain = tmp / "plain.mp4"
+            dubbed = tmp / "dubbed.mp4"
+            assemble.normalise(clip, None, plain, duration=2.0, mode="keep")
+            assemble.normalise(clip, speech, dubbed, duration=2.0, mode="keep")
+            self.assertAlmostEqual(mean_volume(plain), mean_volume(dubbed), delta=0.5)
+
+    def test_a_silent_clip_sounds_the_same_under_every_mode(self):
+        volumes = {}
+        for mode in ("keep", "mix", "replace"):
+            with TemporaryDirectory() as tmp:
+                volumes[mode] = mean_volume(self.segment(Path(tmp), mode, tone=None))
+        self.assertLess(max(volumes.values()) - min(volumes.values()), 0.5, volumes)

@@ -1,5 +1,4 @@
 # 一词成剧 · One Word Series
-![one word in, a series out](docs/demo.gif)
 
 **一个词进去，一整个系列出来 —— 连戏是写在文件里的，不是碰运气碰出来的。**
 
@@ -611,5 +610,5 @@ README 里的说法都是代码确实会做的事。这一节是更窄的一组�
 python -m unittest discover -s tests -t .
 ```
 
-285 个测试，全部不碰付费 API。方舟适配器走 fake opener，
+290 个测试，全部不碰付费 API。方舟适配器走 fake opener，
 所以请求结构、提交不重试、预算上限这三件事都被断言了，且不花钱。
