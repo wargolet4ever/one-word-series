@@ -1,0 +1,11 @@
+{
+  "ledger_version": "clip-ledger-1",
+  "shot_id": "2",
+  "attempt": 1,
+  "prompt_fingerprint": "6165e45e7b6bb860",
+  "provider": "seedance-ark",
+  "cost_cny": 1.41,
+  "chain_dropped": null,
+  "continues_shot": "1",
+  "file": "shot-02-take-01.mp4"
+}

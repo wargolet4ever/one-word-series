@@ -1,0 +1,260 @@
+{
+  "report_version": "series-episode-1",
+  "generated_at": "2026-09-19T16:02:15+00:00",
+  "seed_word": "salt",
+  "series_title": "Salt's Last Grain",
+  "episode": 1,
+  "episode_title": "The Last Grain",
+  "logline": "Two guardians of wild salt decide to preserve the final batch together.",
+  "vendor": "seedance-ark",
+  "vendor_is_generative": true,
+  "voice_engine": "volc-tts",
+  "audio_mode": "keep",
+  "dialogue_performed_by_model": false,
+  "music": null,
+  "chain_links": {
+    "2": "1"
+  },
+  "stale_chains": [],
+  "dropped_chains": [],
+  "dropped_portraits": [
+    {
+      "shot_id": "2",
+      "reason": "superseded by the first frame, which already carries the face; Ark refuses a first frame and reference images in one request"
+    },
+    {
+      "shot_id": "2",
+      "reason": "superseded by the first frame, which already carries the face; Ark refuses a first frame and reference images in one request"
+    },
+    {
+      "shot_id": "2",
+      "reason": "superseded by the first frame, which already carries the face; Ark refuses a first frame and reference images in one request"
+    }
+  ],
+  "cast_portraits": {
+    "C1": {
+      "file": "C1.jpg",
+      "source": "adopted",
+      "from_shot": "ep1-shot1"
+    }
+  },
+  "audit_failures": [],
+  "narrated_shots": 0,
+  "auditor": "frame-continuity",
+  "evidence_source": "FRAME VISUAL AUDIT",
+  "bible_provenance": {
+    "source": "model",
+    "model": "doubao-seed-2-0-mini-260428",
+    "error": null,
+    "style": "anime"
+  },
+  "policy": {
+    "shot_count": 3,
+    "single_vendor": true,
+    "regenerate_blockers_only": true,
+    "max_repair_rounds": 2
+  },
+  "shots": [
+    {
+      "shot_id": "1",
+      "beat": "establish",
+      "location": "Coastal Salt Marshes",
+      "characters": [
+        "Maren"
+      ],
+      "model_tier": "economy",
+      "final_take": 1,
+      "file": "shot-01-take-01.mp4",
+      "line": "This is the last wild salt.",
+      "prompt": "[STYLE] 2D cel animation, visible line art, flat colour fills; wide compositions, limited animation, held frames with slow pans; painted light, hard cel shadows in two tones, bloom on practicals; palette saturated sky blues and warm ochres, high-contrast key art; composed, deliberate, quietly emotional.\n[LOCATION · Coastal Salt Marshes] Tidal mudflats, weathered wooden salt pans, rusted metal tide gates, a single weathered wooden hut.\n[CHARACTER · Maren] Maren, mid-30s, stocky build, sun-weathered face, matted salt-crusted brown hair, oilskin overalls, wooden salt scoop.\n\n[ACTION] Maren kneels in a salt pan, scooping salt into her wooden scoop\n\n[CAMERA] medium shot, slow pan across mudflats\n\n[CONTINUITY — MUST HOLD]\nMUST: SER-01: Maren’s wooden salt scoop has a cracked handle\nMUST: SER-02: Kael’s ceramic salt jar has a chipped rim\nMUST: SER-03: L1’s salt pans are always covered in a thin white salt crust\nMUST: SER-04: L2’s metal shelving has a rust spot on the middle shelf\n\n[NEGATIVE] text, watermark, extra fingers, warped architecture, style change, photorealism, 3D render, live-action faces, motion blur"
+    },
+    {
+      "shot_id": "2",
+      "beat": "escalate",
+      "location": "Coastal Salt Marshes",
+      "characters": [
+        "Maren",
+        "Kael"
+      ],
+      "model_tier": "economy",
+      "final_take": 3,
+      "file": "shot-02-take-03.mp4",
+      "line": "It’s worth more than synthetic.",
+      "prompt": "[STYLE] 2D cel animation, visible line art, flat colour fills; wide compositions, limited animation, held frames with slow pans; painted light, hard cel shadows in two tones, bloom on practicals; palette saturated sky blues and warm ochres, high-contrast key art; composed, deliberate, quietly emotional.\n[LOCATION · Coastal Salt Marshes] Tidal mudflats, weathered wooden salt pans, rusted metal tide gates, a single weathered wooden hut.\n[CHARACTER · Maren] Maren, mid-30s, stocky build, sun-weathered face, matted salt-crusted brown hair, oilskin overalls, wooden salt scoop.\n[CHARACTER · Kael] Kael, late 20s, lean build, sharp jaw, short black hair, linen tunic, ceramic salt jar.\n\n[ACTION] Kael approaches, holding his chipped ceramic salt jar\n\n[CAMERA] wide shot, slow push-in to their meeting\n\n[CONTINUITY — MUST HOLD]\nMUST: SER-01: Maren’s wooden salt scoop has a cracked handle\nMUST: SER-02: Kael’s ceramic salt jar has a chipped rim\nMUST: SER-03: L1’s salt pans are always covered in a thin white salt crust\nMUST: SER-04: L2’s metal shelving has a rust spot on the middle shelf\n\n[NEGATIVE] text, watermark, extra fingers, warped architecture, style change, photorealism, 3D render, live-action faces, motion blur\n\n[REPAIR — CHANGE ONLY WHAT IS LISTED, KEEP EVERYTHING ELSE IDENTICAL]\nSER-02: Include Kael approaching while holding his chipped ceramic salt jar in the frames\n\n[REPAIR — CHANGE ONLY WHAT IS LISTED, KEEP EVERYTHING ELSE IDENTICAL]\nSER-02: Include Kael approaching in the frame while holding his ceramic salt jar with a visible chipped rim."
+    },
+    {
+      "shot_id": "3",
+      "beat": "turn",
+      "location": "Coastal Storage Shed",
+      "characters": [
+        "Maren",
+        "Kael"
+      ],
+      "model_tier": "primary",
+      "final_take": 1,
+      "file": "shot-03-take-01.mp4",
+      "line": "We keep it, together.",
+      "prompt": "[STYLE] 2D cel animation, visible line art, flat colour fills; wide compositions, limited animation, held frames with slow pans; painted light, hard cel shadows in two tones, bloom on practicals; palette saturated sky blues and warm ochres, high-contrast key art; composed, deliberate, quietly emotional.\n[LOCATION · Coastal Storage Shed] Cinder block walls, concrete floor, metal shelving units, wall-mounted wooden jar rack.\n[CHARACTER · Maren] Maren, mid-30s, stocky build, sun-weathered face, matted salt-crusted brown hair, oilskin overalls, wooden salt scoop.\n[CHARACTER · Kael] Kael, late 20s, lean build, sharp jaw, short black hair, linen tunic, ceramic salt jar.\n\n[ACTION] They pour salt into Kael’s jar in the storage shed\n\n[CAMERA] close-up, slow zoom on merging salt grains\n\n[CONTINUITY — MUST HOLD]\nMUST: SER-01: Maren’s wooden salt scoop has a cracked handle\nMUST: SER-02: Kael’s ceramic salt jar has a chipped rim\nMUST: SER-03: L1’s salt pans are always covered in a thin white salt crust\nMUST: SER-04: L2’s metal shelving has a rust spot on the middle shelf\n\n[NEGATIVE] text, watermark, extra fingers, warped architecture, style change, photorealism, 3D render, live-action faces, motion blur"
+    }
+  ],
+  "generation_events": [
+    {
+      "round": 0,
+      "shot_id": "1",
+      "attempt": 1,
+      "provider": "seedance-ark",
+      "file": "shot-01-take-01.mp4",
+      "model_tier": "economy",
+      "continues_shot": null,
+      "chain_dropped": null,
+      "references_dropped": null
+    },
+    {
+      "round": 0,
+      "shot_id": "2",
+      "attempt": 1,
+      "provider": "seedance-ark",
+      "file": "shot-02-take-01.mp4",
+      "model_tier": "economy",
+      "continues_shot": "1",
+      "chain_dropped": null,
+      "references_dropped": "superseded by the first frame, which already carries the face; Ark refuses a first frame and reference images in one request"
+    },
+    {
+      "round": 0,
+      "shot_id": "3",
+      "attempt": 1,
+      "provider": "seedance-ark",
+      "file": "shot-03-take-01.mp4",
+      "model_tier": "primary",
+      "continues_shot": null,
+      "chain_dropped": null,
+      "references_dropped": null
+    },
+    {
+      "round": 1,
+      "shot_id": "2",
+      "attempt": 2,
+      "provider": "seedance-ark",
+      "file": "shot-02-take-02.mp4",
+      "model_tier": "economy",
+      "continues_shot": "1",
+      "chain_dropped": null,
+      "references_dropped": "superseded by the first frame, which already carries the face; Ark refuses a first frame and reference images in one request"
+    },
+    {
+      "round": 2,
+      "shot_id": "2",
+      "attempt": 3,
+      "provider": "seedance-ark",
+      "file": "shot-02-take-03.mp4",
+      "model_tier": "economy",
+      "continues_shot": "1",
+      "chain_dropped": null,
+      "references_dropped": "superseded by the first frame, which already carries the face; Ark refuses a first frame and reference images in one request"
+    }
+  ],
+  "audit_events": [
+    {
+      "round": 0,
+      "shot_id": "1",
+      "decision": "LOCAL FIX",
+      "evidence_source": "FRAME VISUAL AUDIT",
+      "findings": [
+        {
+          "rule_id": "SER-01",
+          "evidence": "Maren and her wooden salt scoop are not visible in any frame, so the requirement that Maren’s wooden salt scoop has a cracked handle is not satisfied.",
+          "minimal_fix": "Adjust the shot to include Maren kneeling in a salt pan, holding her wooden salt scoop which has a cracked handle.",
+          "severity": "local_fix"
+        },
+        {
+          "rule_id": "SER-03",
+          "evidence": "The salt pans in all frames of L1 have a liquid (water) surface, not covered in the required thin white salt crust.",
+          "minimal_fix": "Modify the salt pans to show a thin white salt crust covering their surfaces instead of water.",
+          "severity": "local_fix"
+        }
+      ]
+    },
+    {
+      "round": 0,
+      "shot_id": "2",
+      "decision": "REGENERATE",
+      "evidence_source": "FRAME VISUAL AUDIT",
+      "findings": [
+        {
+          "rule_id": "SER-01",
+          "evidence": "Maren’s wooden salt scoop has an intact, uncracked handle with no visible crack on the handle",
+          "minimal_fix": "Add a visible crack to the handle of Maren’s wooden salt scoop",
+          "severity": "local_fix"
+        },
+        {
+          "rule_id": "SER-02",
+          "evidence": "Kael is not present in any frame, so his ceramic salt jar (required to have a chipped rim) is not visible",
+          "minimal_fix": "Include Kael approaching while holding his chipped ceramic salt jar in the frames",
+          "severity": "regenerate"
+        }
+      ]
+    },
+    {
+      "round": 0,
+      "shot_id": "3",
+      "decision": "PASS",
+      "evidence_source": "RULE TRIAGE ONLY",
+      "findings": []
+    },
+    {
+      "round": 1,
+      "shot_id": "2",
+      "decision": "REGENERATE",
+      "evidence_source": "FRAME VISUAL AUDIT",
+      "findings": [
+        {
+          "rule_id": "SER-01",
+          "evidence": "The wooden salt scoop held by Maren has a smooth, intact handle with no visible crack, violating the requirement that it has a cracked handle.",
+          "minimal_fix": "Add a distinct crack to the handle of Maren’s wooden salt scoop.",
+          "severity": "local_fix"
+        },
+        {
+          "rule_id": "SER-02",
+          "evidence": "Kael is not present in any of the frames, so his ceramic salt jar is not visible, making it impossible to confirm it has a chipped rim as required.",
+          "minimal_fix": "Include Kael approaching in the frame while holding his ceramic salt jar with a visible chipped rim.",
+          "severity": "regenerate"
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "shot_id": "2",
+      "decision": "LOCAL FIX",
+      "evidence_source": "FRAME VISUAL AUDIT",
+      "findings": [
+        {
+          "rule_id": "SER-01",
+          "evidence": "Maren’s wooden salt scoop has an uncracked handle (no visible crack on the handle in all frames)",
+          "minimal_fix": "Add a visible crack to the wooden handle of Maren’s salt scoop",
+          "severity": "local_fix"
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "status": "DELIVERED",
+    "unresolved_shot_ids": [],
+    "initial_generation_count": 3,
+    "total_generation_count": 5,
+    "repaired_shot_ids": [
+      "2"
+    ],
+    "reused_shot_ids": [],
+    "reused_saving_cny": 0.0,
+    "portraits_used": true,
+    "whole_film_rerun": false,
+    "runtime_sec": 15.0,
+    "subtitles_burned": true,
+    "wall_clock_sec": 1336.5
+  },
+  "outputs": {
+    "video": "episode-01.mp4",
+    "srt": "episode-01.srt"
+  }
+}

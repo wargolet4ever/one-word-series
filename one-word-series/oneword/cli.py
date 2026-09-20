@@ -187,6 +187,41 @@ def _progress_printer(stream=None):
     return report
 
 
+def _writing_printer(stream=None):
+    """The bible is one big JSON object and a slow model is slow to write it.
+
+    Before this, the first thing a run printed was the finished bible — so
+    between pressing enter and that line there was a silent gap that, with the
+    retries, can run to the better part of ten minutes. Silence of that length
+    is indistinguishable from a hang, and killing a run that was working is the
+    mistake the video vendor's progress line already exists to prevent.
+    """
+
+    stream = stream or sys.stdout
+    interactive = hasattr(stream, "isatty") and stream.isatty()
+
+    def report(fields: dict) -> None:
+        status = fields.get("status", "")
+        elapsed = fields.get("elapsed", 0.0)
+        if status == "waiting":
+            line = (
+                f"· writing the series with {fields.get('model', '?')} — "
+                f"this takes a minute or two"
+            )
+            if fields.get("attempt", 1) > 1:
+                line += f" (attempt {fields['attempt']} of {fields.get('of', '?')})"
+            stream.write(line + "\n")
+        elif status == "retrying":
+            stream.write(f"  retrying after {elapsed:.0f}s — {fields.get('reason', '')}\n")
+        elif status == "failed":
+            stream.write(f"  gave up after {elapsed:.0f}s\n")
+        elif status == "answered" and interactive:
+            stream.write(f"  model answered in {elapsed:.0f}s\n")
+        stream.flush()
+
+    return report
+
+
 def _load_cast(root: Path, bible, args, supplied: dict[str, Path], vendor):
     """The frozen portraits for this series, or None if they are switched off.
 
@@ -354,6 +389,18 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_OK
 
     args = _parser().parse_args(argv)
+
+    # `oneword styles` lists the presets, but only when `styles` comes first.
+    # Put any flag before it — `oneword --yes styles` — and argparse takes it
+    # as the seed word and shoots a film about the word "styles". Both are
+    # legitimate readings, so this says which one it picked rather than
+    # guessing silently or refusing a word somebody might actually want.
+    if args.word in ("styles", "drift"):
+        print(
+            f"· shooting a series from the word \"{args.word}\". If you wanted the "
+            f"{args.word} command, it has to come first: oneword {args.word} …"
+        )
+
     if not 3 <= args.shots <= 8:
         print("--shots must be between 3 and 8", file=sys.stderr)
         return EXIT_ERROR
@@ -391,6 +438,7 @@ def main(argv: list[str] | None = None) -> int:
                 language=args.language,
                 allow_model=not args.no_model,
                 style=args.style,
+                on_progress=_writing_printer(),
             )
             print(f"· bible: {bible.title} · style {bible.style_name}")
             for line in opening.provenance_lines(provenance, bible.word):
@@ -412,6 +460,16 @@ def main(argv: list[str] | None = None) -> int:
         vendor = build_vendor(args.vendor, on_progress=_progress_printer())
         voice_engine = build_voice(args.voice)
         print(f"· vendor {vendor.name} · voice {voice_engine.name} · audio {args.audio}")
+        # Which model, at what size, for how much — before the first submit.
+        # "seedance-ark" alone does not distinguish 1.0 lite at 720p from 2.0
+        # mini at 480p, and those are different pictures at different prices.
+        config = getattr(vendor, "config", None)
+        if config is not None:
+            print(
+                f"  {config.model} · {config.resolution} · {int(config.duration)}s"
+                f" · ¥{vendor.unit_cost:.2f} per clip"
+                f" · budget ¥{config.budget_cny:.2f}"
+            )
 
         # ONEWORD_PRICE outranks the whole price table, for every model, every
         # resolution and every duration. That is right for a one-off run and
@@ -492,11 +550,25 @@ def main(argv: list[str] | None = None) -> int:
                     f"  note: shot {dropped['shot_id']} was shot from text — "
                     "the platform refused its first frame, so that cut may jump"
                 )
-            for dropped in report.get("dropped_portraits", []):
+            for failed in report.get("audit_failures", []):
                 print(
-                    f"  note: shot {dropped['shot_id']} was shot without the cast "
-                    "portraits — the platform refused them, so that face may differ"
+                    f"  note: shot {failed['shot_id']} was NOT audited — {failed['reason']}\n"
+                    "        the clip is in the film; nobody checked it"
                 )
+            for dropped in report.get("dropped_portraits", []):
+                # Two different situations wear the same field. One is a
+                # refusal, which may cost the face; the other is this tool
+                # choosing the chain over the portraits, which does not.
+                if str(dropped.get("reason", "")).startswith("superseded"):
+                    print(
+                        f"  shot {dropped['shot_id']} used the previous shot's frame "
+                        "instead of the portraits — the frame already carries the face"
+                    )
+                else:
+                    print(
+                        f"  note: shot {dropped['shot_id']} was shot without the cast "
+                        "portraits — the platform refused them, so that face may differ"
+                    )
             adopted = [
                 cid for cid, entry in (report.get("cast_portraits") or {}).items()
                 if entry.get("from_shot", "").startswith(f"ep{number}-")

@@ -63,6 +63,28 @@ def _extract_json(raw: str) -> Any:
     return json.loads(raw[start : end + 1])
 
 
+def items_under(parsed: Any, key: str) -> list[Any]:
+    """The list a model meant to give you, whatever shape it wrapped it in.
+
+    Asked for `{"issues": [...]}`, a model quite reasonably answers with the
+    bare array some of the time. `parsed.get(key)` then raises AttributeError
+    on a list — and it raised in the one place that could not afford it, after
+    eight paid clips were already on disk.
+    """
+
+    if isinstance(parsed, list):
+        return [item for item in parsed if isinstance(item, dict)]
+    if isinstance(parsed, dict):
+        found = parsed.get(key)
+        if isinstance(found, list):
+            return [item for item in found if isinstance(item, dict)]
+        # Some models use the singular, or wrap it one level deeper.
+        for value in parsed.values():
+            if isinstance(value, list) and all(isinstance(i, dict) for i in value):
+                return value
+    return []
+
+
 def error_detail(exc: Exception) -> str:
     """The platform's own reason, not just the status line.
 
@@ -120,11 +142,25 @@ def chat_json(
     *,
     temperature: float = 0.6,
     timeout: int = 180,
+    on_progress=None,
 ) -> dict[str, Any]:
-    """Ask for one JSON object.  Raises ModelUnavailable rather than guessing."""
+    """Ask for one JSON object.  Raises ModelUnavailable rather than guessing.
+
+    `on_progress` exists because this call can sit silent for minutes. A whole
+    bible is a large JSON object and a reasoning model is slow to produce one;
+    with the retries below, a failing call is quiet for the better part of ten
+    minutes before it says anything at all. A run that prints nothing for that
+    long is indistinguishable from a hung one, and the first thing anyone does
+    then is kill it — which is exactly the mistake the video vendor's progress
+    line was added to prevent. Same lesson, different call.
+    """
 
     if not configured():
         raise ModelUnavailable("LLM_API_KEY / LLM_MODEL not set")
+
+    def report(**fields: Any) -> None:
+        if on_progress:
+            on_progress(fields)
 
     base = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1").rstrip("/")
     payload = {
@@ -145,16 +181,27 @@ def chat_json(
         method="POST",
     )
 
+    started = time.time()
     for attempt in range(MAX_RETRIES + 1):
+        report(
+            status="waiting", model=model_name(), attempt=attempt + 1,
+            of=MAX_RETRIES + 1, elapsed=time.time() - started, timeout=timeout,
+        )
         try:
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 body = json.loads(response.read().decode("utf-8"))
+            report(status="answered", elapsed=time.time() - started, done=True)
             break
         except Exception as exc:  # noqa: BLE001 — classified, then decided
             if not _retryable(exc) or attempt == MAX_RETRIES:
+                report(status="failed", elapsed=time.time() - started, done=True)
                 raise ModelUnavailable(
                     f"writing model failed: {error_detail(exc)}"
                 ) from exc
+            report(
+                status="retrying", reason=error_detail(exc)[:120],
+                elapsed=time.time() - started,
+            )
             time.sleep(RETRY_BACKOFF_S[min(attempt, len(RETRY_BACKOFF_S) - 1)])
 
     raw = body["choices"][0]["message"]["content"]

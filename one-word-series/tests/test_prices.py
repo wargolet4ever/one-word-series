@@ -86,6 +86,38 @@ class PriceSourceTests(unittest.TestCase):
             with self.assertRaises(vendors.VendorError):
                 vendors.estimated_cost_cny(config())
 
+    def test_the_error_says_where_that_model_came_from(self):
+        """The first question is "why THAT model?", not "what price?".
+
+        The video model is a different setting from the writing model, and an
+        unset one falls back to a built-in default — so the combination in the
+        error is often not the one the user just configured. Naming only the
+        combination sends them to look up a price for a model they did not
+        want to use.
+        """
+
+        with TemporaryDirectory() as tmp:
+            with mock.patch.dict(os.environ, {"ONEWORD_PRICES": str(Path(tmp) / "none.json")}):
+                os.environ.pop("SEEDANCE_MODEL", None)
+                with self.assertRaises(vendors.VendorError) as caught:
+                    vendors.estimated_cost_cny(config(model=vendors.ARK_DEFAULT_MODEL))
+        message = str(caught.exception)
+        self.assertIn("SEEDANCE_MODEL", message)
+        self.assertIn("UNSET", message)
+        self.assertIn("LLM_MODEL", message)
+
+    def test_a_model_that_was_chosen_is_not_blamed_on_a_default(self):
+        with TemporaryDirectory() as tmp:
+            with mock.patch.dict(
+                os.environ,
+                {"ONEWORD_PRICES": str(Path(tmp) / "none.json"),
+                 "SEEDANCE_MODEL": "doubao-seedance-2-0-mini-260615"},
+            ):
+                with self.assertRaises(vendors.VendorError) as caught:
+                    vendors.estimated_cost_cny(config(model="doubao-seedance-2-0-mini-260615"))
+        message = str(caught.exception)
+        self.assertIn("SEEDANCE_MODEL=doubao-seedance-2-0-mini-260615   (set)", message)
+
     def test_an_unpriced_combination_says_exactly_what_to_write(self):
         with TemporaryDirectory() as tmp:
             with mock.patch.dict(os.environ, {"ONEWORD_PRICES": str(Path(tmp) / "none.json")}):

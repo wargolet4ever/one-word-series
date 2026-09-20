@@ -108,6 +108,13 @@ INPUT_IMAGE_REFUSALS = (
     "input image",
     "image content",
     "may contain real person",
+    # Structural rather than moral: Ark will not take a first frame and
+    # reference images in one request. `generate` now chooses between them
+    # up front so this should never fire, and it is listed anyway — a rule
+    # about which images may travel together is exactly the kind of thing a
+    # platform changes, and finding out should cost a degraded shot rather
+    # than the rest of a paid episode.
+    "cannot be mixed with reference",
 )
 
 
@@ -336,10 +343,28 @@ def estimated_cost_cny(config: ArkConfig) -> float:
     table = load_prices()
     if key not in table:
         model, resolution, duration = key
+        # Naming the combination is not enough: the first question anyone asks
+        # is "why THAT model?", because the video model is a different setting
+        # from the writing model and an unset one falls back to a built-in
+        # default that is probably not what you just configured. Say where each
+        # half came from, so a wrong model gets fixed instead of priced.
+        provenance = []
+        for name, value, fallback in (
+            ("SEEDANCE_MODEL", model, ARK_DEFAULT_MODEL),
+            ("SEEDANCE_RESOLUTION", resolution, "720p"),
+            ("SEEDANCE_DURATION", str(duration), "5"),
+        ):
+            source = "set" if os.getenv(name) else f"UNSET — built-in default {fallback}"
+            provenance.append(f"    {name}={value}   ({source})")
         raise VendorError(
             f"no verified price for {model} at {resolution}/{duration}s.\n"
-            "  Look it up on the platform's pricing page — a guessed number makes "
-            "the budget cap meaningless — then either:\n"
+            "  That combination came from:\n"
+            + "\n".join(provenance)
+            + "\n  If it is not the one you meant, set those first — the writing model "
+            "(LLM_MODEL)\n  is a separate setting and does not change which video model "
+            "is used.\n"
+            "  If it is right, look the price up on the platform's pricing page — a "
+            "guessed\n  number makes the budget cap meaningless — then either:\n"
             f"    set ONEWORD_PRICE=<yuan per clip>   (this run only)\n"
             f"    or put it in {price_file()}:\n"
             f'      {{"{model}": {{"{resolution}": {{"{duration}": 1.86}}}}}}'
@@ -531,20 +556,35 @@ class SeedanceVendor:
         portraits = [Path(p) for p in (shot.get("reference_images") or [])]
         frame = Path(first_frame) if first_frame else None
 
+        # Ark refuses a request carrying both: "first/last frame content cannot
+        # be mixed with reference media content". So this is a choice, not a
+        # stack — and the chain wins wherever it exists, because the frame it
+        # hands over ALREADY contains the character as the previous shot
+        # established them. Chaining carries the room *and* the face; a
+        # portrait carries only the face. Portraits are therefore for the shots
+        # a chain cannot reach — the first shot of a location, the first of an
+        # episode — which is where identity has nothing else holding it.
+        superseded: str | None = None
+        if frame is not None and portraits:
+            superseded = (
+                f"superseded by the first frame, which already carries the face; "
+                f"Ark refuses a first frame and reference images in one request"
+            )
+            portraits = []
+
         # Input images are moderated, and a photorealistic face is exactly what
         # gets refused. Both the first frame and the portraits are improvements,
         # not requirements, so a refusal steps down one rung rather than ending
         # a run that has already been paid for. A refused submit creates no
         # task, so each attempt on this ladder costs nothing.
+        # One input-image rung at most, now that the two are exclusive.
         ladder = []
         if frame or portraits:
             ladder.append((frame, portraits))
-        if frame and portraits:
-            ladder.append((None, portraits))
         ladder.append((None, []))
 
         chain_dropped: str | None = None
-        references_dropped: str | None = None
+        references_dropped: str | None = superseded
         task_id = None
         for index, (try_frame, try_portraits) in enumerate(ladder):
             try:

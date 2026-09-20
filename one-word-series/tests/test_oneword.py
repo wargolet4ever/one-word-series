@@ -558,3 +558,100 @@ class DialogueInPromptTests(unittest.TestCase):
 
     def test_the_offline_vendor_declares_it_cannot_speak(self):
         self.assertFalse(vendors.AnimaticVendor().speaks)
+
+
+class AuditFailureTests(unittest.TestCase):
+    """An auditor crash must not throw away clips already paid for.
+
+    A real run generated all eight clips (¥12.69), then died in the auditor on
+    `'list' object has no attribute 'get'` — the model had answered with a bare
+    JSON array. The money was spent, the footage was on disk, and the episode
+    was never assembled. That is the most expensive place in this package to
+    crash, and it was the last one left unguarded.
+    """
+
+    class Exploding:
+        name = "exploding"
+        last_evidence = "RULE TRIAGE ONLY"
+
+        def audit(self, clip, shot, bible=None):
+            raise AttributeError("'list' object has no attribute 'get'")
+
+    def test_the_episode_is_still_assembled(self):
+        bible = make_bible(episodes=1, shots=3)
+        with TemporaryDirectory() as tmp:
+            report = run_episode(
+                bible, 1, Path(tmp),
+                vendor=StubVendor(), auditor=self.Exploding(),
+                voice_engine=voice.SilentVoice(),
+            )
+            self.assertTrue((Path(tmp) / report["outputs"]["video"]).is_file())
+
+    def test_a_crashed_audit_is_never_a_pass(self):
+        bible = make_bible(episodes=1, shots=3)
+        with TemporaryDirectory() as tmp:
+            report = run_episode(
+                bible, 1, Path(tmp),
+                vendor=StubVendor(), auditor=self.Exploding(),
+                voice_engine=voice.SilentVoice(),
+            )
+        decisions = {event["decision"] for event in report["audit_events"]}
+        self.assertEqual(decisions, {"NOT AUDITED"})
+        self.assertNotIn("PASS", decisions)
+
+    def test_every_unaudited_shot_is_named_with_its_reason(self):
+        bible = make_bible(episodes=1, shots=3)
+        with TemporaryDirectory() as tmp:
+            report = run_episode(
+                bible, 1, Path(tmp),
+                vendor=StubVendor(), auditor=self.Exploding(),
+                voice_engine=voice.SilentVoice(),
+            )
+        self.assertEqual(len(report["audit_failures"]), 3)
+        self.assertIn("AttributeError", report["audit_failures"][0]["reason"])
+
+    def test_no_extra_clips_are_bought_because_the_audit_broke(self):
+        """A failed audit is not evidence of a blocker, and regenerating on it
+        would spend money on a verdict nobody reached."""
+
+        bible = make_bible(episodes=1, shots=3)
+        vendor = StubVendor()
+        with TemporaryDirectory() as tmp:
+            run_episode(
+                bible, 1, Path(tmp),
+                vendor=vendor, auditor=self.Exploding(),
+                voice_engine=voice.SilentVoice(),
+            )
+        self.assertEqual(len(vendor.calls), 3)
+
+
+class BareArrayTests(unittest.TestCase):
+    """Asked for {"issues": [...]}, a model sometimes returns just [...]."""
+
+    def test_a_bare_array_is_read_as_the_list(self):
+        from oneword import llm
+
+        self.assertEqual(
+            llm.items_under([{"a": 1}], "issues"), [{"a": 1}]
+        )
+
+    def test_the_wrapped_shape_still_works(self):
+        from oneword import llm
+
+        self.assertEqual(
+            llm.items_under({"issues": [{"a": 1}]}, "issues"), [{"a": 1}]
+        )
+
+    def test_a_differently_named_wrapper_is_still_found(self):
+        from oneword import llm
+
+        self.assertEqual(
+            llm.items_under({"findings": [{"a": 1}]}, "issues"), [{"a": 1}]
+        )
+
+    def test_nonsense_yields_nothing_rather_than_raising(self):
+        from oneword import llm
+
+        for value in (None, "text", 7, {}, [], {"issues": "not a list"}):
+            with self.subTest(value=value):
+                self.assertEqual(llm.items_under(value, "issues"), [])

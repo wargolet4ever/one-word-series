@@ -379,6 +379,7 @@ def build_bible(
     language: str = "en",
     allow_model: bool = True,
     style: str | None = None,
+    on_progress=None,
 ) -> tuple[SeriesBible, dict[str, Any]]:
     """Return (bible, provenance).  Never raises just because there is no key."""
 
@@ -406,7 +407,10 @@ def build_bible(
             beat_order=", ".join(BEATS[:shots]),
         )
         try:
-            data = validate(llm.chat_json(SYSTEM, prompt), episodes=episodes, shots=shots)
+            data = validate(
+                llm.chat_json(SYSTEM, prompt, on_progress=on_progress),
+                episodes=episodes, shots=shots,
+            )
             provenance = {"source": "model", "model": llm.model_name(), "error": None}
         except (llm.ModelUnavailable, BibleError, ValueError, KeyError) as exc:
             provenance = {"source": "local-template", "model": None, "error": str(exc)[:200]}

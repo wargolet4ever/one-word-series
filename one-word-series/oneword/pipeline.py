@@ -221,6 +221,7 @@ def run_episode(
 
     generation_events: list[dict[str, Any]] = []
     audit_events: list[dict[str, Any]] = []
+    audit_failures: list[dict[str, Any]] = []
     current: dict[str, GeneratedClip] = {}
     attempts: dict[str, int] = {shot["shot_id"]: 0 for shot in shots}
 
@@ -343,7 +344,31 @@ def run_episode(
 
         blockers: list[str] = []
         for shot_id in pending:
-            findings = auditor.audit(current[shot_id], by_id[shot_id], bible)
+            # The audit is an improvement, like chaining and the portraits, and
+            # it runs AFTER every clip in this episode has been paid for. An
+            # exception here threw away the assembly of work already bought —
+            # which is the most expensive possible place to crash, and the one
+            # place this package had left unguarded. A broken audit costs the
+            # audit, never the episode.
+            try:
+                findings = auditor.audit(current[shot_id], by_id[shot_id], bible)
+            except Exception as exc:  # noqa: BLE001 — degrades, never destroys
+                audit_failures.append(
+                    {"shot_id": shot_id, "reason": f"{type(exc).__name__}: {exc}"[:300]}
+                )
+                audit_events.append(
+                    {
+                        "round": round_index,
+                        "shot_id": shot_id,
+                        # Not PASS. Nobody looked, and an unearned pass is the
+                        # one thing this report may never print.
+                        "decision": "NOT AUDITED",
+                        "evidence_source": RULE_TRIAGE,
+                        "findings": [],
+                        "error": f"{type(exc).__name__}: {exc}"[:300],
+                    }
+                )
+                continue
             hard = [finding for finding in findings if finding.severity == "regenerate"]
             decision = "REGENERATE" if hard else ("LOCAL FIX" if findings else "PASS")
             audit_events.append(
@@ -474,6 +499,9 @@ def run_episode(
             }
             if casting is not None else {}
         ),
+        # Shots the audit could not reach. Named, because "no blockers"
+        # and "nobody looked" must never read the same.
+        "audit_failures": audit_failures,
         "narrated_shots": narrated,
         "auditor": getattr(auditor, "name", "rule-triage"),
         "evidence_source": getattr(auditor, "last_evidence", RULE_TRIAGE),

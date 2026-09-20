@@ -1,4 +1,5 @@
 # One Word Series · 一词成剧
+![one word in, a series out](docs/demo.gif)
 
 **One word in, a whole series out — with the continuity written down.**
 
@@ -148,11 +149,18 @@ that is usually a downgrade, so `--audio` decides what wins:
 | `--audio` | what happens |
 |---|---|
 | `mix` *(default)* | the clip's own audio is ducked ~9 dB under the narration; both survive |
-| `keep` | the clip's audio is the audio, narration is skipped entirely |
+| `keep` | the clip's own voice wins; a clip with no voice is still narrated |
 | `replace` | narration only — the clip's own track is discarded |
 
 A shot whose clip already speaks gets no TTS call at all, so nothing dubs a
-second voice over the first. A silent clip behaves identically under all three.
+second voice over the first. A silent clip behaves identically under all three:
+the mode decides what to do with a voice that exists, and where there is none
+there is nothing for it to decide.
+
+Seedance returns silent clips unless `SEEDANCE_AUDIO=1`, so `--audio keep`
+alone does not give you a talking film. Set that to have the video model
+perform the lines; any mode will have the narrator read them over silent
+footage.
 
 ### Who says the line
 
@@ -259,10 +267,16 @@ fighting the new look:
   Add --reset-cast to adopt new ones in this look, or --style to go back.
 ```
 
+A first frame and a portrait are **mutually exclusive** — Ark refuses a request
+carrying both. So it is a choice, and the chain wins wherever it exists: the
+frame it hands over already contains the character as the previous shot
+established them, which carries the room *and* the face. Portraits are for the
+shots a chain cannot reach — the first shot of a location, the first of an
+episode — which is exactly where identity has nothing else holding it.
+
 Moderation applies here too, and harder: a good photorealistic portrait is
-exactly what reads as a photograph of a real person. The submit degrades one
-rung at a time — first frame plus portraits, then portraits alone, then text —
-and the report says which rung the shot was actually made on:
+exactly what reads as a photograph of a real person. A refused input image drops to text rather than losing the shot, and the
+report says which rung it was made on:
 
 ```
   note: shot 4 was shot without the cast portraits — the platform refused them,
@@ -683,6 +697,6 @@ produces a film:
 python -m unittest discover -s tests -t .
 ```
 
-253 tests, none of which touch a paid API. The Ark adapter is driven through a
+285 tests, none of which touch a paid API. The Ark adapter is driven through a
 fake opener, so the request shape, the no-retry-on-submit rule and the budget
 cap are all asserted without spending anything.

@@ -259,10 +259,16 @@ fighting the new look:
   Add --reset-cast to adopt new ones in this look, or --style to go back.
 ```
 
+A first frame and a portrait are **mutually exclusive** — Ark refuses a request
+carrying both. So it is a choice, and the chain wins wherever it exists: the
+frame it hands over already contains the character as the previous shot
+established them, which carries the room *and* the face. Portraits are for the
+shots a chain cannot reach — the first shot of a location, the first of an
+episode — which is exactly where identity has nothing else holding it.
+
 Moderation applies here too, and harder: a good photorealistic portrait is
-exactly what reads as a photograph of a real person. The submit degrades one
-rung at a time — first frame plus portraits, then portraits alone, then text —
-and the report says which rung the shot was actually made on:
+exactly what reads as a photograph of a real person. A refused input image drops to text rather than losing the shot, and the
+report says which rung it was made on:
 
 ```
   note: shot 4 was shot without the cast portraits — the platform refused them,
@@ -683,6 +689,6 @@ produces a film:
 python -m unittest discover -s tests -t .
 ```
 
-253 tests, none of which touch a paid API. The Ark adapter is driven through a
+270 tests, none of which touch a paid API. The Ark adapter is driven through a
 fake opener, so the request shape, the no-retry-on-submit rule and the budget
 cap are all asserted without spending anything.

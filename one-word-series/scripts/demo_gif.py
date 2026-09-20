@@ -126,6 +126,28 @@ def main(argv: list[str]) -> int:
     missing = [c for c in clips if not c.is_file()]
     if missing:
         print(f"not on disk: {', '.join(str(m) for m in missing)}", file=sys.stderr)
+        # The output directory is a flag, so a machine usually has several and
+        # the one in an example command is rarely the one you used. Naming the
+        # episodes that do exist turns this into a copy-paste instead of a hunt.
+        found = sorted(
+            path for pattern in ("*/*/episode-*/episode-*.mp4", "*/episode-*/episode-*.mp4")
+            for path in Path().glob(pattern)
+        )
+        if found:
+            print("\nEpisodes that are on disk here:", file=sys.stderr)
+            for path in found[:10]:
+                print(f"  {path}", file=sys.stderr)
+            print(
+                f"\n  python scripts/demo_gif.py {' '.join(str(p) for p in found[:2])}",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                "\nNo finished episodes anywhere below this directory. `.mp4` is "
+                "gitignored,\nso a fresh clone or a copied folder has the reports "
+                "and none of the footage.",
+                file=sys.stderr,
+            )
         return 2
 
     target = Path(args.out)

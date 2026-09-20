@@ -424,6 +424,73 @@ class ErrorBodyTests(unittest.TestCase):
         self.assertIn("no vision capability", message)
 
 
+class SilentWaitTests(unittest.TestCase):
+    """The writing model call printed nothing for up to ten minutes.
+
+    180s timeout, two retries, and not one line in between — so the first
+    thing a run printed was the finished bible, and everything before that
+    looked exactly like a hang. The video vendor already had a progress line
+    for precisely this; this call never got one.
+    """
+
+    def printed(self, opener, model="doubao-seed-2-0-lite"):
+        import io
+
+        from oneword import cli
+
+        out = io.StringIO()
+        with unittest.mock.patch.dict(
+            os.environ, {"LLM_API_KEY": "k", "LLM_MODEL": model}
+        ), unittest.mock.patch("urllib.request.urlopen", opener), \
+                unittest.mock.patch.object(drift.llm.time, "sleep", lambda s: None):
+            try:
+                drift.llm.chat_json("sys", "user", on_progress=cli._writing_printer(out))
+            except drift.llm.ModelUnavailable:
+                pass
+        return out.getvalue()
+
+    def answering_opener(self):
+        body = b'{"choices":[{"message":{"content":"{\\"ok\\":1}"}}]}'
+        return lambda request, timeout=None: unittest.mock.MagicMock(
+            __enter__=lambda s: s, __exit__=lambda *a: False, read=lambda: body
+        )
+
+    def test_the_wait_is_announced_before_it_starts(self):
+        """After the fact is no use: the point is the gap, not the result."""
+
+        text = self.printed(self.answering_opener())
+        self.assertIn("writing the series with doubao-seed-2-0-lite", text)
+
+    def test_a_retry_says_why_and_which_attempt(self):
+        calls = {"n": 0}
+
+        def opener(request, timeout=None):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise TimeoutError("The read operation timed out")
+            return self.answering_opener()(request)
+
+        text = self.printed(opener)
+        self.assertIn("retrying", text)
+        self.assertIn("timed out", text)
+        self.assertIn("attempt 2 of 3", text)
+
+    def test_giving_up_is_said_out_loud(self):
+        def opener(request, timeout=None):
+            raise TimeoutError("The read operation timed out")
+
+        text = self.printed(opener)
+        self.assertIn("gave up", text)
+
+    def test_no_callback_is_not_an_error(self):
+        """The progress line is an affordance, never a dependency."""
+
+        with unittest.mock.patch.dict(
+            os.environ, {"LLM_API_KEY": "k", "LLM_MODEL": "m"}
+        ), unittest.mock.patch("urllib.request.urlopen", self.answering_opener()):
+            self.assertEqual(drift.llm.chat_json("sys", "user"), {"ok": 1})
+
+
 class ValidatorTests(unittest.TestCase):
     def base(self, **overrides):
         finding = {

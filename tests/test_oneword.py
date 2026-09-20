@@ -8,6 +8,8 @@ cap are all asserted without spending anything.
 from __future__ import annotations
 
 import io
+import os
+import socket
 import subprocess
 import json
 import unittest
@@ -441,6 +443,107 @@ class ArkErrorMessageTests(unittest.TestCase):
         self.assertNotIn("super-secret", str(caught.exception))
 
 
+class UnreachableTests(unittest.TestCase):
+    """A network failure must answer one question: was anything charged?
+
+    This used to be forty lines of urllib traceback ending in a bare
+    ConnectionRefusedError, which answers nothing and leaves the only safe
+    move — rerunning — feeling like a gamble.
+    """
+
+    def setUp(self):
+        with_test_price(self)
+        for name in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY"):
+            self.addCleanup(os.environ.pop, name, None)
+            os.environ.pop(name, None)
+        self.addCleanup(os.environ.pop, "ARK_BASE_URL", None)
+        os.environ.pop("ARK_BASE_URL", None)
+
+    def config(self, **kwargs):
+        base = dict(api_key="test-key", model="doubao-seedance-1-0-lite-t2v-250428",
+                    resolution="720p", duration=5, budget_cny=10.0)
+        base.update(kwargs)
+        return vendors.ArkConfig(**base)
+
+    def opener_raising(self, exc):
+        def opener(request, timeout=None):
+            raise exc
+        return opener
+
+    def submit_expecting_failure(self, exc, **config):
+        vendor = vendors.SeedanceVendor(self.config(**config), opener=self.opener_raising(exc))
+        with self.assertRaises(vendors.ArkUnreachable) as caught:
+            vendor.submit("x")
+        return caught.exception
+
+    def test_a_refused_connection_is_not_a_traceback(self):
+        error = self.submit_expecting_failure(
+            urllib.error.URLError(ConnectionRefusedError(10061, "actively refused it"))
+        )
+        self.assertIn("ark.cn-beijing.volces.com", str(error))
+        self.assertIn("actively refused it", str(error))
+
+    def test_a_refused_connection_says_nothing_was_charged(self):
+        # TCP refused means the request never went out. That is knowable, and
+        # it is the whole reason someone reads this message.
+        error = self.submit_expecting_failure(
+            urllib.error.URLError(ConnectionRefusedError(10061, "actively refused it"))
+        )
+        self.assertFalse(error.delivered)
+        self.assertIn("no task was created", str(error))
+
+    def test_an_unresolvable_host_says_nothing_was_charged(self):
+        error = self.submit_expecting_failure(
+            urllib.error.URLError(socket.gaierror(11001, "getaddrinfo failed"))
+        )
+        self.assertFalse(error.delivered)
+        self.assertIn("no task was created", str(error))
+
+    def test_a_timeout_refuses_to_promise_the_run_was_free(self):
+        # A timeout can fire after the platform accepted the bytes. Claiming
+        # otherwise is how a rerun silently pays twice.
+        error = self.submit_expecting_failure(TimeoutError("timed out"))
+        self.assertTrue(error.delivered)
+        self.assertIn("MAY exist", str(error))
+        self.assertNotIn("no task was created", str(error))
+
+    def test_an_unset_base_url_is_named_as_the_built_in_default(self):
+        error = self.submit_expecting_failure(
+            urllib.error.URLError(ConnectionRefusedError(10061, "refused"))
+        )
+        self.assertIn("ARK_BASE_URL is unset", str(error))
+
+    def test_a_set_base_url_is_shown_because_it_is_the_usual_culprit(self):
+        os.environ["ARK_BASE_URL"] = "https://127.0.0.1:9999/api/v3"
+        error = self.submit_expecting_failure(
+            urllib.error.URLError(ConnectionRefusedError(10061, "refused")),
+            base_url="https://127.0.0.1:9999/api/v3",
+        )
+        self.assertIn("127.0.0.1:9999", str(error))
+        self.assertIn("(set)", str(error))
+
+    def test_a_configured_proxy_is_named_because_urllib_goes_through_it(self):
+        os.environ["HTTPS_PROXY"] = "http://127.0.0.1:7890"
+        error = self.submit_expecting_failure(
+            urllib.error.URLError(ConnectionRefusedError(10061, "refused"))
+        )
+        self.assertIn("127.0.0.1:7890", str(error))
+        self.assertIn("not running", str(error))
+
+    def test_the_api_key_never_appears_in_the_error(self):
+        error = self.submit_expecting_failure(
+            urllib.error.URLError(ConnectionRefusedError(10061, "refused")),
+            api_key="super-secret",
+        )
+        self.assertNotIn("super-secret", str(error))
+
+    def test_the_poll_loop_still_treats_a_dropped_connection_as_retryable(self):
+        # Submit does not retry and that rule is untouched. Poll does, and
+        # wrapping the error must not quietly take that away.
+        error = vendors.ArkUnreachable("https://host/api/v3/x", "reset", delivered=True)
+        self.assertTrue(vendors.SeedanceVendor._retryable(error))
+
+
 class ProgressTests(unittest.TestCase):
     def setUp(self):
         with_test_price(self)
@@ -558,3 +661,100 @@ class DialogueInPromptTests(unittest.TestCase):
 
     def test_the_offline_vendor_declares_it_cannot_speak(self):
         self.assertFalse(vendors.AnimaticVendor().speaks)
+
+
+class AuditFailureTests(unittest.TestCase):
+    """An auditor crash must not throw away clips already paid for.
+
+    A real run generated all eight clips (¥12.69), then died in the auditor on
+    `'list' object has no attribute 'get'` — the model had answered with a bare
+    JSON array. The money was spent, the footage was on disk, and the episode
+    was never assembled. That is the most expensive place in this package to
+    crash, and it was the last one left unguarded.
+    """
+
+    class Exploding:
+        name = "exploding"
+        last_evidence = "RULE TRIAGE ONLY"
+
+        def audit(self, clip, shot, bible=None):
+            raise AttributeError("'list' object has no attribute 'get'")
+
+    def test_the_episode_is_still_assembled(self):
+        bible = make_bible(episodes=1, shots=3)
+        with TemporaryDirectory() as tmp:
+            report = run_episode(
+                bible, 1, Path(tmp),
+                vendor=StubVendor(), auditor=self.Exploding(),
+                voice_engine=voice.SilentVoice(),
+            )
+            self.assertTrue((Path(tmp) / report["outputs"]["video"]).is_file())
+
+    def test_a_crashed_audit_is_never_a_pass(self):
+        bible = make_bible(episodes=1, shots=3)
+        with TemporaryDirectory() as tmp:
+            report = run_episode(
+                bible, 1, Path(tmp),
+                vendor=StubVendor(), auditor=self.Exploding(),
+                voice_engine=voice.SilentVoice(),
+            )
+        decisions = {event["decision"] for event in report["audit_events"]}
+        self.assertEqual(decisions, {"NOT AUDITED"})
+        self.assertNotIn("PASS", decisions)
+
+    def test_every_unaudited_shot_is_named_with_its_reason(self):
+        bible = make_bible(episodes=1, shots=3)
+        with TemporaryDirectory() as tmp:
+            report = run_episode(
+                bible, 1, Path(tmp),
+                vendor=StubVendor(), auditor=self.Exploding(),
+                voice_engine=voice.SilentVoice(),
+            )
+        self.assertEqual(len(report["audit_failures"]), 3)
+        self.assertIn("AttributeError", report["audit_failures"][0]["reason"])
+
+    def test_no_extra_clips_are_bought_because_the_audit_broke(self):
+        """A failed audit is not evidence of a blocker, and regenerating on it
+        would spend money on a verdict nobody reached."""
+
+        bible = make_bible(episodes=1, shots=3)
+        vendor = StubVendor()
+        with TemporaryDirectory() as tmp:
+            run_episode(
+                bible, 1, Path(tmp),
+                vendor=vendor, auditor=self.Exploding(),
+                voice_engine=voice.SilentVoice(),
+            )
+        self.assertEqual(len(vendor.calls), 3)
+
+
+class BareArrayTests(unittest.TestCase):
+    """Asked for {"issues": [...]}, a model sometimes returns just [...]."""
+
+    def test_a_bare_array_is_read_as_the_list(self):
+        from oneword import llm
+
+        self.assertEqual(
+            llm.items_under([{"a": 1}], "issues"), [{"a": 1}]
+        )
+
+    def test_the_wrapped_shape_still_works(self):
+        from oneword import llm
+
+        self.assertEqual(
+            llm.items_under({"issues": [{"a": 1}]}, "issues"), [{"a": 1}]
+        )
+
+    def test_a_differently_named_wrapper_is_still_found(self):
+        from oneword import llm
+
+        self.assertEqual(
+            llm.items_under({"findings": [{"a": 1}]}, "issues"), [{"a": 1}]
+        )
+
+    def test_nonsense_yields_nothing_rather_than_raising(self):
+        from oneword import llm
+
+        for value in (None, "text", 7, {}, [], {"issues": "not a list"}):
+            with self.subTest(value=value):
+                self.assertEqual(llm.items_under(value, "issues"), [])

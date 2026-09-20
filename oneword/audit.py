@@ -153,7 +153,7 @@ class FrameContinuityAuditor:
 
         self.last_evidence = FRAME_AUDIT
         findings: list[BlockerFinding] = []
-        for issue in parsed.get("issues") or []:
+        for issue in llm.items_under(parsed, "issues"):
             text = (issue.get("evidence") or "").strip()
             if not text:
                 continue

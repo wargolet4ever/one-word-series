@@ -215,7 +215,7 @@ def visual_compare(
         return None
 
     differences = []
-    for item in parsed.get("differences") or []:
+    for item in llm.items_under(parsed, "differences"):
         evidence = (item.get("evidence") or "").strip()
         if not evidence:
             continue

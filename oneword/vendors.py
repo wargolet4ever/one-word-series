@@ -19,10 +19,12 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import socket
 import subprocess
 import textwrap
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -77,9 +79,57 @@ class ArkHTTPError(VendorError):
                 "  Check 方舟控制台 → 模型广场: is the model opened, and does "
                 "SEEDANCE_MODEL match its id exactly (including the date suffix)?"
             )
-        super().__init__(detail)
         self.code = code
         self.url = url
+        super().__init__(detail)
+
+
+class ArkUnreachable(VendorError):
+    """The request never got an HTTP response — the network stopped it first.
+
+    This earns its own type because after a failed submit there is exactly one
+    question worth answering: does a paid task now exist? A connection that was
+    refused or whose host would not resolve never delivered the request, so the
+    answer is a flat no. A connection that timed out mid-flight may have. The
+    message says which, rather than leaving you to read forty lines of urllib
+    internals and guess — which is what this used to be.
+
+    It stays retryable, so the poll loop treats a dropped connection exactly as
+    it did before. Only submit refuses to retry, and that rule is unchanged.
+    """
+
+    def __init__(self, url: str, reason: str, *, delivered: bool) -> None:
+        host = urllib.parse.urlsplit(url).netloc or url
+        detail = f"could not reach {host}: {reason}"
+        detail += (
+            "\n  The request may have been delivered, so a paid task MAY exist. "
+            "Check 方舟控制台 → 任务管理 before rerunning."
+            if delivered
+            else "\n  The request was never delivered, so no task was created "
+            "and nothing was charged."
+        )
+        # Same provenance habit as the price error: a wrong value is only
+        # fixable once you know whether you set it or a default set it.
+        base = os.getenv("ARK_BASE_URL")
+        detail += (
+            f"\n  ARK_BASE_URL={base}   (set)"
+            if base
+            else f"\n  ARK_BASE_URL is unset, so this is the built-in {ARK_DEFAULT_BASE}"
+        )
+        proxies = [
+            f"{name}={os.environ[name]}"
+            for name in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY")
+            if os.environ.get(name)
+        ]
+        if proxies:
+            detail += (
+                "\n  A proxy is configured and urllib goes through it: "
+                + " · ".join(proxies)
+                + "\n  If that proxy is not running, this is the failure you get."
+            )
+        self.delivered = delivered
+        self.url = url
+        super().__init__(detail)
 
 
 def _error_message(exc: urllib.error.HTTPError) -> str:
@@ -100,6 +150,41 @@ def _error_message(exc: urllib.error.HTTPError) -> str:
     return raw.strip()[:400]
 
 
+def _root_cause(exc: BaseException) -> BaseException:
+    """The OS error underneath urllib's wrapper, which is the informative one."""
+
+    reason = getattr(exc, "reason", None)
+    return reason if isinstance(reason, BaseException) else exc
+
+
+def _network_reason(exc: BaseException) -> str:
+    """A one-line cause, in the OS's own words."""
+
+    cause = _root_cause(exc)
+    text = str(cause).strip()
+    return f"{type(cause).__name__}: {text}" if text else type(cause).__name__
+
+
+def _may_have_been_delivered(exc: BaseException) -> bool:
+    """Could this failure have left a paid task on the platform?
+
+    Only two cases prove it could not: a connection the far end actively
+    refused, and a hostname that never resolved. In both the request was never
+    put on the wire. Everything else — a timeout above all, which can fire
+    after the platform has accepted the bytes — is treated as "maybe", because
+    the expensive mistake here is telling someone nothing was charged when
+    something was. Erring towards "go and look" costs a glance at the console;
+    erring the other way costs a silent duplicate charge on the rerun.
+    """
+
+    cause = _root_cause(exc)
+    if isinstance(cause, ConnectionRefusedError):
+        return False
+    if isinstance(cause, socket.gaierror):
+        return False
+    return True
+
+
 # A platform can refuse the first frame itself — most often because the frame
 # shows a photorealistic person, which moderation reads as a real photograph.
 # The refusal is about the image, not the prompt, so the shot is still makeable.
@@ -108,6 +193,13 @@ INPUT_IMAGE_REFUSALS = (
     "input image",
     "image content",
     "may contain real person",
+    # Structural rather than moral: Ark will not take a first frame and
+    # reference images in one request. `generate` now chooses between them
+    # up front so this should never fire, and it is listed anyway — a rule
+    # about which images may travel together is exactly the kind of thing a
+    # platform changes, and finding out should cost a degraded shot rather
+    # than the rest of a paid episode.
+    "cannot be mixed with reference",
 )
 
 
@@ -336,10 +428,28 @@ def estimated_cost_cny(config: ArkConfig) -> float:
     table = load_prices()
     if key not in table:
         model, resolution, duration = key
+        # Naming the combination is not enough: the first question anyone asks
+        # is "why THAT model?", because the video model is a different setting
+        # from the writing model and an unset one falls back to a built-in
+        # default that is probably not what you just configured. Say where each
+        # half came from, so a wrong model gets fixed instead of priced.
+        provenance = []
+        for name, value, fallback in (
+            ("SEEDANCE_MODEL", model, ARK_DEFAULT_MODEL),
+            ("SEEDANCE_RESOLUTION", resolution, "720p"),
+            ("SEEDANCE_DURATION", str(duration), "5"),
+        ):
+            source = "set" if os.getenv(name) else f"UNSET — built-in default {fallback}"
+            provenance.append(f"    {name}={value}   ({source})")
         raise VendorError(
             f"no verified price for {model} at {resolution}/{duration}s.\n"
-            "  Look it up on the platform's pricing page — a guessed number makes "
-            "the budget cap meaningless — then either:\n"
+            "  That combination came from:\n"
+            + "\n".join(provenance)
+            + "\n  If it is not the one you meant, set those first — the writing model "
+            "(LLM_MODEL)\n  is a separate setting and does not change which video model "
+            "is used.\n"
+            "  If it is right, look the price up on the platform's pricing page — a "
+            "guessed\n  number makes the budget cap meaningless — then either:\n"
             f"    set ONEWORD_PRICE=<yuan per clip>   (this run only)\n"
             f"    or put it in {price_file()}:\n"
             f'      {{"{model}": {{"{resolution}": {{"{duration}": 1.86}}}}}}'
@@ -407,13 +517,25 @@ class SeedanceVendor:
                 f"{self.config.base_url}{path}",
                 model=self.config.model,
             ) from exc
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            # No HTTP response came back at all. Whether a paid task exists
+            # depends entirely on how far the request got, so work that out
+            # here, where the OS error is still in hand, rather than making
+            # the caller infer it from a traceback.
+            raise ArkUnreachable(
+                f"{self.config.base_url}{path}",
+                _network_reason(exc),
+                delivered=_may_have_been_delivered(exc),
+            ) from exc
 
     @staticmethod
     def _retryable(exc: Exception) -> bool:
         code = getattr(exc, "code", None)
         if isinstance(code, int):
             return code in RETRYABLE_STATUS
-        return isinstance(exc, (urllib.error.URLError, TimeoutError, ConnectionError))
+        return isinstance(
+            exc, (ArkUnreachable, urllib.error.URLError, TimeoutError, ConnectionError)
+        )
 
     # ---- the three stages ------------------------------------------
 
@@ -531,20 +653,35 @@ class SeedanceVendor:
         portraits = [Path(p) for p in (shot.get("reference_images") or [])]
         frame = Path(first_frame) if first_frame else None
 
+        # Ark refuses a request carrying both: "first/last frame content cannot
+        # be mixed with reference media content". So this is a choice, not a
+        # stack — and the chain wins wherever it exists, because the frame it
+        # hands over ALREADY contains the character as the previous shot
+        # established them. Chaining carries the room *and* the face; a
+        # portrait carries only the face. Portraits are therefore for the shots
+        # a chain cannot reach — the first shot of a location, the first of an
+        # episode — which is where identity has nothing else holding it.
+        superseded: str | None = None
+        if frame is not None and portraits:
+            superseded = (
+                f"superseded by the first frame, which already carries the face; "
+                f"Ark refuses a first frame and reference images in one request"
+            )
+            portraits = []
+
         # Input images are moderated, and a photorealistic face is exactly what
         # gets refused. Both the first frame and the portraits are improvements,
         # not requirements, so a refusal steps down one rung rather than ending
         # a run that has already been paid for. A refused submit creates no
         # task, so each attempt on this ladder costs nothing.
+        # One input-image rung at most, now that the two are exclusive.
         ladder = []
         if frame or portraits:
             ladder.append((frame, portraits))
-        if frame and portraits:
-            ladder.append((None, portraits))
         ladder.append((None, []))
 
         chain_dropped: str | None = None
-        references_dropped: str | None = None
+        references_dropped: str | None = superseded
         task_id = None
         for index, (try_frame, try_portraits) in enumerate(ladder):
             try:

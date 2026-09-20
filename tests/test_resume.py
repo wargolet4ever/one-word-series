@@ -20,7 +20,7 @@ from tempfile import TemporaryDirectory
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from oneword import ledger, styles, voice  # noqa: E402
+from oneword import cli, ledger, styles, voice  # noqa: E402
 from oneword.bible import build_bible  # noqa: E402
 from oneword.pipeline import run_episode  # noqa: E402
 from test_oneword import ScriptedAuditor, StubVendor  # noqa: E402
@@ -211,3 +211,56 @@ class ResumeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class StandingBibleTests(unittest.TestCase):
+    """Running the same command twice must not cost twice.
+
+    The resume check matches on the prompt, and every prompt is built from the
+    bible — so rewriting the story silently invalidates every clip on disk.
+    A real run re-invented the story and started re-buying eight clips that
+    were already paid for, which is the resume feature defeated by the first
+    step of the run.
+    """
+
+    def run_cli(self, out, *extra):
+        import contextlib
+        import io
+
+        text = io.StringIO()
+        with contextlib.redirect_stdout(text):
+            code = cli.main(
+                ["salt", "--episodes", "1", "--shots", "3", "--style", "anime",
+                 "--yes", "--out", str(out), *extra]
+            )
+        return code, text.getvalue()
+
+    def test_a_second_run_keeps_the_first_run_s_story(self):
+        with TemporaryDirectory() as tmp:
+            self.run_cli(tmp)
+            first = json.loads((Path(tmp) / "salt" / "bible.json").read_text(encoding="utf-8"))
+            _, text = self.run_cli(tmp)
+            second = json.loads((Path(tmp) / "salt" / "bible.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(first["episodes"], second["episodes"])
+        self.assertIn("already exists", text)
+
+    def test_the_clips_are_reused_rather_than_bought_again(self):
+        with TemporaryDirectory() as tmp:
+            self.run_cli(tmp)
+            _, text = self.run_cli(tmp)
+        self.assertIn("reused 3 shot(s)", text)
+
+    def test_fresh_is_how_you_ask_for_a_new_story(self):
+        with TemporaryDirectory() as tmp:
+            self.run_cli(tmp)
+            _, text = self.run_cli(tmp, "--fresh")
+        self.assertNotIn("already exists", text)
+        self.assertNotIn("reused", text)
+
+    def test_an_explicit_bible_still_wins(self):
+        with TemporaryDirectory() as tmp:
+            self.run_cli(tmp)
+            elsewhere = Path(tmp) / "salt" / "bible.json"
+            _, text = self.run_cli(tmp, "--bible", str(elsewhere))
+        self.assertIn("bible reused", text)

@@ -244,6 +244,90 @@ class VendorReferenceTests(unittest.TestCase):
         roles = [item.get("role") for item in sent["payload"]["content"] if item["type"] == "image_url"]
         self.assertEqual(roles, ["first_frame", "reference_image"])
 
+    def test_a_first_frame_and_portraits_are_never_sent_together(self):
+        """Ark refuses the combination outright:
+
+            first/last frame content cannot be mixed with reference media content
+
+        So it is a choice, and the chain wins: the frame it hands over already
+        contains the character as the previous shot established them, which
+        carries the room AND the face. A portrait carries only the face.
+        """
+
+        sent = []
+
+        def opener(request, timeout=None):
+            payload = json.loads(request.data.decode("utf-8"))
+            sent.append([i.get("role") for i in payload["content"] if i["type"] == "image_url"])
+            return mock.MagicMock(
+                __enter__=lambda s: s, __exit__=lambda *a: False,
+                read=lambda: json.dumps({"id": "task-1"}).encode("utf-8"),
+            )
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            frame = make_image(root / "frame.jpg")
+            face = make_image(root / "face.jpg")
+            vendor = self.vendor(opener)
+            body = {"status": "succeeded", "content": {"video_url": "http://x/clip.mp4"}}
+            with mock.patch.object(vendor, "poll", return_value=body), \
+                 mock.patch.object(vendor, "download", side_effect=lambda url, target: target):
+                clip = vendor.generate(
+                    {"shot_id": "2", "first_frame": str(frame),
+                     "reference_images": [str(face)]},
+                    "a prompt", 1, root / "out.mp4",
+                )
+
+        self.assertEqual(sent, [["first_frame"]])
+        self.assertIn("superseded", clip.references_dropped)
+        self.assertIsNone(clip.chain_dropped)
+
+    def test_portraits_are_sent_when_there_is_no_frame_to_prefer(self):
+        """A shot that opens a location cannot chain, so the portrait is the
+        only thing holding that character's face."""
+
+        sent = []
+
+        def opener(request, timeout=None):
+            payload = json.loads(request.data.decode("utf-8"))
+            sent.append([i.get("role") for i in payload["content"] if i["type"] == "image_url"])
+            return mock.MagicMock(
+                __enter__=lambda s: s, __exit__=lambda *a: False,
+                read=lambda: json.dumps({"id": "task-1"}).encode("utf-8"),
+            )
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            face = make_image(root / "face.jpg")
+            vendor = self.vendor(opener)
+            body = {"status": "succeeded", "content": {"video_url": "http://x/clip.mp4"}}
+            with mock.patch.object(vendor, "poll", return_value=body), \
+                 mock.patch.object(vendor, "download", side_effect=lambda url, target: target):
+                clip = vendor.generate(
+                    {"shot_id": "1", "reference_images": [str(face)]},
+                    "a prompt", 1, root / "out.mp4",
+                )
+
+        self.assertEqual(sent, [["reference_image"]])
+        self.assertIsNone(clip.references_dropped)
+
+    def test_the_mixing_refusal_degrades_rather_than_ending_the_episode(self):
+        """It should never fire now, but a rule about which images may travel
+        together is exactly what a platform changes — and finding out should
+        cost one degraded shot, not the rest of a paid episode."""
+
+        exc = urllib.error.HTTPError(
+            "https://ark/x", 400, "Bad Request", {},
+            __import__("io").BytesIO(json.dumps({"error": {
+                "code": "InvalidParameter",
+                "message": "first/last frame content cannot be mixed with reference media content",
+            }}).encode("utf-8")),
+        )
+        try:
+            raise vendors.ArkHTTPError(400, vendors._error_message(exc), "https://ark/x", "m")
+        except vendors.ArkHTTPError as built:
+            self.assertTrue(vendors.refused_the_input_image(built))
+
     def test_a_refused_portrait_drops_to_text_and_says_so(self):
         """Ark reads a good photorealistic portrait as a photo of a real person.
 

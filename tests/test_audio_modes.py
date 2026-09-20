@@ -19,7 +19,10 @@ from tempfile import TemporaryDirectory
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from oneword import assemble  # noqa: E402
+from oneword import assemble, vendors  # noqa: E402
+from oneword.bible import build_bible  # noqa: E402
+from oneword.contracts import GeneratedClip  # noqa: E402
+from oneword.pipeline import run_episode  # noqa: E402
 
 
 def ffmpeg() -> str:
@@ -151,3 +154,72 @@ class AudioModeTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class SilentStubVendor:
+    """Returns a clip with no audio track at all, like Seedance by default."""
+
+    name = "silent-stub"
+    generative = True
+    speaks = False
+
+    def generate(self, shot, prompt, attempt, target):
+        target.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(
+            [vendors.ffmpeg_exe(), "-hide_banner", "-loglevel", "error",
+             "-f", "lavfi", "-i", "color=c=black:s=320x180:d=0.4:r=12",
+             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", "-y", str(target)],
+            capture_output=True, check=True,
+        )
+        return GeneratedClip(shot_id=str(shot["shot_id"]), attempt=attempt,
+                             provider=self.name, path=target, prompt=prompt)
+
+
+class CountingVoice:
+    """A voice engine that always succeeds, so the count means what it says."""
+
+    name = "counting"
+
+    def synthesize(self, line, voice, cid, target: Path) -> Path:
+        subprocess.run(
+            [vendors.ffmpeg_exe(), "-hide_banner", "-loglevel", "error",
+             "-f", "lavfi", "-i", "sine=frequency=300:duration=0.6",
+             "-y", str(target)],
+            capture_output=True, check=True,
+        )
+        return target
+
+
+class SilentClipTests(unittest.TestCase):
+    """`--audio keep` must not mean "no sound at all".
+
+    Seedance returns silent clips unless SEEDANCE_AUDIO=1, which is not the
+    default. Combined with `keep`, that produced a film with no voice anywhere
+    — the model was never asked to speak and the narrator was switched off —
+    and the run reported success. `normalise` has always documented the rule:
+    a clip with no audio behaves the same under every mode.
+    """
+
+    def run_mode(self, mode, tmp):
+        bible, _ = build_bible("rust", episodes=1, shots=3, allow_model=False)
+        return run_episode(
+            bible, 1, Path(tmp),
+            vendor=SilentStubVendor(), auditor=None,
+            voice_engine=CountingVoice(),
+            audio_mode=mode,
+        )
+
+    def test_a_silent_clip_is_narrated_under_keep(self):
+        with TemporaryDirectory() as tmp:
+            report = self.run_mode("keep", tmp)
+        self.assertGreater(
+            report["narrated_shots"], 0,
+            "keep silenced a film whose clips had no voice of their own",
+        )
+
+    def test_every_mode_narrates_a_silent_clip_identically(self):
+        counts = {}
+        for mode in ("keep", "mix", "replace"):
+            with TemporaryDirectory() as tmp:
+                counts[mode] = self.run_mode(mode, tmp)["narrated_shots"]
+        self.assertEqual(len(set(counts.values())), 1, counts)
