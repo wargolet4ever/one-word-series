@@ -1,4 +1,5 @@
 # One Word Series · 一词成剧
+![one word in, a series out](docs/demo.gif)
 
 **One word in, a whole series out — with the continuity written down.**
 
