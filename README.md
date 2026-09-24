@@ -157,10 +157,9 @@ second voice over the first. A silent clip behaves identically under all three:
 the mode decides what to do with a voice that exists, and where there is none
 there is nothing for it to decide.
 
-Seedance returns silent clips unless `SEEDANCE_AUDIO=1`, so `--audio keep`
-alone does not give you a talking film. Set that to have the video model
-perform the lines; any mode will have the narrator read them over silent
-footage.
+Seedance returns silent clips unless `SEEDANCE_AUDIO=1`. With `--audio keep`,
+silent clips receive narration when a voice engine is available. Set
+`SEEDANCE_AUDIO=1` to have the video model perform the lines instead.
 
 ### Who says the line
 
@@ -670,7 +669,8 @@ proven in production. Where that distinction matters it is stated in place.
    reality rather than harsher — a room that never changed read 0.072 and
    0.123. `scripts/calibrate_drift.py --series` measures real clips; the
    numbers have not been moved yet because two episodes is not a distribution.
-3. **A demo film in the repo.** Paid clips exist; none is committed here yet.
+3. **A complete demo film in the repo.** The READMEs show a short demo GIF;
+   paid clips exist, but no complete film is committed here yet.
 4. **Character portraits against the live API.** The request shape, the
    degradation ladder and the freezing rules are asserted by tests and driven
    through a fake opener. Whether Ark's moderation accepts an *adopted* frame

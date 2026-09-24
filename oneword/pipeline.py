@@ -414,7 +414,7 @@ def run_episode(
         # returned silent clips, which is what SEEDANCE_AUDIO=0 does by
         # default. `assemble.normalise` has always documented the rule this
         # restores: a clip with no audio behaves the same under every mode.
-        speaks_for_itself = assemble.has_audio(clip.path)
+        speaks_for_itself = assemble.has_audible_audio(clip.path)
         speech = None if speaks_for_itself else _speech_for(shot, bible, voice_engine, work_dir)
         narrated += 1 if speech else 0
         duration = float(shot["duration_sec"])

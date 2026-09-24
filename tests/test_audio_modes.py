@@ -58,6 +58,18 @@ def make_speech(target: Path, *, seconds: float = 1.0) -> Path:
     return target
 
 
+def make_silent_track_clip(target: Path) -> Path:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        [ffmpeg(), "-hide_banner", "-loglevel", "error",
+         "-f", "lavfi", "-i", "color=c=navy:s=320x180:d=2:r=12",
+         "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
+         "-t", "2", "-c:v", "libx264", "-c:a", "aac", "-y", str(target)],
+        capture_output=True, check=True,
+    )
+    return target
+
+
 def mean_volume(path: Path) -> float:
     """dB. Silence comes back as -91.
 
@@ -86,6 +98,17 @@ class ClipAudioDetectionTests(unittest.TestCase):
     def test_a_silent_clip_is_recognised(self):
         with TemporaryDirectory() as tmp:
             self.assertFalse(assemble.has_audio(make_clip(Path(tmp) / "b.mp4", tone=None)))
+
+    def test_a_silent_audio_stream_does_not_suppress_narration(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            clip = make_silent_track_clip(root / "clip.mp4")
+            speech = make_speech(root / "speech.wav")
+            target = root / "segment.mp4"
+            self.assertTrue(assemble.has_audio(clip))
+            self.assertFalse(assemble.has_audible_audio(clip))
+            assemble.normalise(clip, speech, target, duration=2.0, mode="keep")
+            self.assertGreater(mean_volume(target), -80.0)
 
 
 class AudioModeTests(unittest.TestCase):
@@ -198,6 +221,15 @@ class CountingVoice:
         return target
 
 
+class SilentTrackVendor(SilentStubVendor):
+    name = "silent-track-stub"
+
+    def generate(self, shot, prompt, attempt, target):
+        make_silent_track_clip(target)
+        return GeneratedClip(shot_id=str(shot["shot_id"]), attempt=attempt,
+                             provider=self.name, path=target, prompt=prompt)
+
+
 class SilentClipTests(unittest.TestCase):
     """`--audio keep` must not mean "no sound at all".
 
@@ -224,6 +256,16 @@ class SilentClipTests(unittest.TestCase):
             report["narrated_shots"], 0,
             "keep silenced a film whose clips had no voice of their own",
         )
+
+    def test_a_silent_audio_track_is_narrated_in_the_finished_episode(self):
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bible, _ = build_bible("rust", episodes=1, shots=3, allow_model=False)
+            report = run_episode(bible, 1, root, vendor=SilentTrackVendor(),
+                                 auditor=None, voice_engine=CountingVoice(),
+                                 audio_mode="keep")
+            self.assertGreater(report["narrated_shots"], 0)
+            self.assertGreater(mean_volume(root / report["outputs"]["video"]), -80.0)
 
     def test_every_mode_narrates_a_silent_clip_identically(self):
         counts = {}

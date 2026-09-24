@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -73,13 +74,32 @@ def has_audio(clip: Path) -> bool:
              "-show_entries", "stream=index", "-of", "csv=p=0", str(clip)],
             capture_output=True, text=True, check=False,
         )
+        if completed.returncode == 0 and not completed.stdout.strip():
+            return False
         return bool(completed.stdout.strip())
-    # No ffprobe: ffmpeg still names the streams it found on stderr.
     completed = subprocess.run(
         [_ffmpeg(), "-hide_banner", "-i", str(clip), "-f", "null", "-"],
         capture_output=True, text=True, check=False,
     )
     return "Audio:" in completed.stderr
+
+
+def has_audible_audio(clip: Path) -> bool:
+    """Detect a performance, including in clips whose audio track is silent."""
+    if not has_audio(clip):
+        return False
+    # Scan the whole clip so a line late in the shot is not mistaken for silence.
+    completed = subprocess.run(
+        [_ffmpeg(), "-hide_banner", "-i", str(clip), "-vn",
+         "-af", "volumedetect", "-f", "null", "-"],
+        capture_output=True, text=True, check=False,
+    )
+    if completed.returncode != 0:
+        return True  # Preserve uncertain performances.
+    match = re.search(r"max_volume:\s*(-?\d+(?:\.\d+)?|-inf) dB", completed.stderr)
+    if match:
+        return match.group(1) != "-inf" and float(match.group(1)) > -60.0
+    return True
 
 
 def normalise(
@@ -116,7 +136,7 @@ def normalise(
         f"fps={FPS},format=yuv420p"
     )
     fmt = f"aformat=sample_fmts=fltp:sample_rates={SAMPLE_RATE}:channel_layouts=stereo"
-    clip_has_audio = has_audio(clip)
+    clip_has_audio = has_audible_audio(clip)
     # `keep` drops narration because the clip's own voice wins — but a silent
     # clip has no voice to win with, and dropping the narration there leaves a
     # segment with nothing in it at all. That is the rule three lines of this
